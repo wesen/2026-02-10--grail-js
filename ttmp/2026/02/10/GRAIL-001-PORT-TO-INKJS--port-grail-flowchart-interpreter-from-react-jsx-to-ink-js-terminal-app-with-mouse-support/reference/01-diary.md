@@ -767,10 +767,44 @@ Continuing from "close and move on" prompt. This was Checkpoint A from the build
 ### What should be done in the future
 - **Update design docs 02 and 03** to reflect the correct API: `Compositor` not `Canvas` for positioning and hit testing, `tea.View` struct not program options for AltScreen/MouseMode
 - **Checkpoint B (GRAIL-010)**: verify `Compositor.Hit(x, y)` coordinates match `MouseMsg.Mouse().X/Y`
-- **Interactive mouse test**: run `GOWORK=off go run ./cmd/grail/` in a real terminal (not tmux scripting) and move the mouse to verify crosshair tracking
+- ~~**Interactive mouse test**: run `GOWORK=off go run ./cmd/grail/` in a real terminal~~ **DONE** — user confirmed mouse tracking works
 - **Performance**: measure Compositor.Render() time with 50+ layers (node count for a typical GRaIL flowchart)
 
 ### Code review instructions
 - **File**: `cmd/grail/main.go`
 - **Run**: `GOWORK=off go run ./cmd/grail/` — should show dark green screen, title, footer, orange `+` crosshair. Press `q` to exit.
 - **Key discovery**: `Canvas.Compose(layer)` ≠ positioned rendering. Must use `Compositor` for X/Y/Z.
+
+---
+
+## Step 12: Implement GRAIL-006 — tealayout Package
+
+Built `pkg/tealayout`: declarative layout builder + chrome layer helpers. Fast and clean — completed all 4 reusable `pkg/` packages. One bug found: `image.Rect` auto-canonicalizes negative rects, so zero-size terminals produced non-empty regions. Fixed with explicit bounds check before calling `image.Rect`.
+
+### Prompt Context
+
+Continuing sequential implementation. GRAIL-006 is the last `pkg/` package.
+
+**Commits:** 8eac84f (LayoutBuilder), 76afe19 (chrome helpers), f6923ae (9 tests + fix)
+
+### What I did
+- `pkg/tealayout/regions.go`: `LayoutBuilder` with `TopFixed`, `BottomFixed`, `RightFixed`, `Remaining`, `Build`
+- `pkg/tealayout/chrome.go`: `ToolbarLayer`, `FooterLayer`, `VerticalSeparator`, `ModalLayer`, `FillLayer`
+- `pkg/tealayout/regions_test.go`: 9 tests including overlap detection, zero-size terminal, centering
+
+### What worked
+- Layout builder correctly computes non-overlapping regions (verified by pair-wise overlap test)
+- 80×24 with toolbar(3) + footer(1) + panel(34) → canvas = 46×20 at (0,3) ✅
+- Modal centering works with box styles including border and padding
+- FillLayer creates positioned background layers from regions
+
+### What didn't work
+- **Zero-size terminal test failed initially.** `image.Rect(0, 3, 0, 0)` auto-canonicalizes to `(0,0)-(0,3)` which has Dy()=3, not 0. Fixed by checking bounds explicitly before calling `image.Rect`.
+
+### What I learned
+- `image.Rect` always canonicalizes (swaps min/max so min <= max). You cannot use Dx()<0 to detect degenerate rects after construction. Must validate inputs before constructing.
+
+### Code review instructions
+- **Files**: `pkg/tealayout/regions.go`, `pkg/tealayout/chrome.go`, `pkg/tealayout/regions_test.go`
+- **Run**: `make test` (60 tests across 4 packages)
+- **Key**: `Remaining` degenerate bounds check

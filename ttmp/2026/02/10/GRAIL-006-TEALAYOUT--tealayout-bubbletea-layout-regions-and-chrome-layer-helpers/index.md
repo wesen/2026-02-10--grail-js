@@ -1,7 +1,7 @@
 ---
 Title: tealayout — Bubbletea layout regions and chrome layer helpers
 Ticket: GRAIL-006-TEALAYOUT
-Status: active
+Status: complete
 Topics:
     - layout
     - bubbletea
@@ -13,10 +13,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.358524238-05:00
+LastUpdated: 2026-02-10T16:58:45.675514362-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # tealayout — Bubbletea layout regions and chrome layer helpers
 

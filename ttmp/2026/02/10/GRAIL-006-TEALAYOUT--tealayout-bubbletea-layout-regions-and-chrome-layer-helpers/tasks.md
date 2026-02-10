@@ -2,10 +2,10 @@
 
 ## TODO
 
-- [ ] Add tasks here
+- [x] Add tasks here
 
-- [ ] Implement LayoutBuilder with TopFixed, BottomFixed, RightFixed, Remaining
-- [ ] Implement FillLayer convenience for region-sized layers
-- [ ] Implement ToolbarLayer, FooterLayer, VerticalSeparator helpers
-- [ ] Implement ModalLayer (centered high-Z overlay)
-- [ ] Write unit tests: region math, no overlaps, remaining fills correctly
+- [x] Implement LayoutBuilder with TopFixed, BottomFixed, RightFixed, Remaining
+- [x] Implement FillLayer convenience for region-sized layers
+- [x] Implement ToolbarLayer, FooterLayer, VerticalSeparator helpers
+- [x] Implement ModalLayer (centered high-Z overlay)
+- [x] Write unit tests: region math, no overlaps, remaining fills correctly
