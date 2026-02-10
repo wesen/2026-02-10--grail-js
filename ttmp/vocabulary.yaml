@@ -5,6 +5,24 @@ topics:
       description: Backend services
     - slug: websocket
       description: WebSocket lifecycle & events
+    - slug: bubbletea
+      description: Bubbletea Go TUI framework
+    - slug: lipgloss-v2
+      description: Lipgloss v2 styling and compositing
+    - slug: go
+      description: Go programming language
+    - slug: cellbuf
+      description: 2D character buffer for terminal rendering
+    - slug: graph
+      description: Graph data structures and algorithms
+    - slug: rendering
+      description: Terminal rendering and drawing
+    - slug: mouse
+      description: Mouse interaction and hit testing
+    - slug: interpreter
+      description: Code/flowchart interpreter
+    - slug: layout
+      description: UI layout computation
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes
@@ -16,6 +34,8 @@ docTypes:
       description: Ticket landing page
     - slug: skill
       description: Skill documentation (what it's for and when to use it)
+    - slug: implementation-plan
+      description: Step-by-step implementation plan for a component
 intent:
     - slug: long-term
       description: Likely to persist
