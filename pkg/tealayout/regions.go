@@ -69,10 +69,18 @@ func (b *LayoutBuilder) RightFixed(name string, width int) *LayoutBuilder {
 }
 
 // Remaining assigns whatever rectangle is left after fixed allocations.
+// If the remaining area is degenerate (negative width or height), an
+// empty rectangle is used.
 func (b *LayoutBuilder) Remaining(name string) *LayoutBuilder {
+	x1 := b.termW - b.right
+	y1 := b.termH - b.bottom
+	var rect image.Rectangle
+	if x1 > 0 && y1 > b.top {
+		rect = image.Rect(0, b.top, x1, y1)
+	}
 	b.regions = append(b.regions, Region{
 		Name: name,
-		Rect: image.Rect(0, b.top, b.termW-b.right, b.termH-b.bottom),
+		Rect: rect,
 	})
 	return b
 }
@@ -85,8 +93,8 @@ func (b *LayoutBuilder) Build() Layout {
 		Regions: make(map[string]Region, len(b.regions)),
 	}
 	for _, r := range b.regions {
-		// Clamp negative dimensions to zero
-		if r.Rect.Dx() < 0 || r.Rect.Dy() < 0 {
+		// Clamp degenerate regions (where min > max on either axis) to empty
+		if r.Rect.Min.X >= r.Rect.Max.X || r.Rect.Min.Y >= r.Rect.Max.Y {
 			r.Rect = image.Rectangle{}
 		}
 		l.Regions[r.Name] = r
