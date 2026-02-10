@@ -1,7 +1,7 @@
 ---
 Title: graphmodel — Generic spatial graph data model with hit testing
 Ticket: GRAIL-004-GRAPHMODEL
-Status: active
+Status: complete
 Topics:
     - graph
     - go
@@ -11,10 +11,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.229875085-05:00
+LastUpdated: 2026-02-10T16:25:31.73435755-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # graphmodel — Generic spatial graph data model with hit testing
 

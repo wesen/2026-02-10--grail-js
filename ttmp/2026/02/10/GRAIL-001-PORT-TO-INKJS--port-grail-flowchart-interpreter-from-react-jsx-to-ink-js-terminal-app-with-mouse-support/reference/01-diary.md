@@ -545,3 +545,108 @@ The `charm.land/lipgloss/v2` module is the new canonical import path for v2 deve
 - **Files changed**: `pkg/cellbuf/render.go`, `pkg/cellbuf/buffer_test.go`, `go.mod`, `go.sum`
 - **Run**: `make test` (all 13 pass), `make bench` (comparable to before)
 - **Verify**: `grep lipgloss go.mod` shows only `charm.land/lipgloss/v2`, no `github.com/charmbracelet`
+
+---
+
+## Step 8: Implement GRAIL-003 — drawutil Package
+
+Built `pkg/drawutil`: terminal drawing primitives ported from `grail.py`. Bresenham line algorithm, directional line/arrow character lookup, edge exit-point geometry, and convenience functions that draw into a `cellbuf.Buffer`. Straightforward port — no surprises.
+
+### Prompt Context
+
+**User prompt (verbatim):** "ok, let's move on. close the ticket, start with the next one, process task by task, keeping a diary and committing to git and checking the task off as you go."
+
+**Assistant interpretation:** Close GRAIL-002, implement GRAIL-003 end-to-end with incremental commits.
+
+**Inferred user intent:** Continue systematic execution of the build plan.
+
+**Commits:** ef63887 (Bresenham+LineChar+ArrowChar), 158f018 (EdgeExit), 590cae0 (Draw functions), f8d83f8 (18 tests), 5c58842 (close+demo update)
+
+### What I did
+- `pkg/drawutil/line.go`: `Bresenham()` returning `[]image.Point`, `LineChar()`, `ArrowChar()`, local `abs()` helper
+- `pkg/drawutil/edge.go`: `EdgeExit()` — border exit point from rectangle toward target using normalized dx/dy
+- `pkg/drawutil/grid.go`: `DrawGrid()` with camera offset and non-negative modulus
+- `pkg/drawutil/draw.go`: `DrawLine()`, `DrawArrowLine()`, `DrawDashedLine()` — all draw into `*cellbuf.Buffer`
+- `pkg/drawutil/line_test.go`: 18 unit tests covering Bresenham (horizontal, vertical, diagonal, steep, reverse, zero-length), LineChar, ArrowChar, EdgeExit (4 sides + same-center), Draw functions, grid with camera offset
+- Updated `cmd/cellbuf-demo/` to use drawutil for edges and grid
+
+### Why
+- Direct port of Python drawing code from `grail.py:303-370`
+- Foundation for GRAIL-008 (edge rendering) and GRAIL-010 (connect preview)
+
+### What worked
+- All 18 tests passed on first run (31 total across cellbuf+drawutil)
+- Bresenham algorithm is a direct translation — Go's integer arithmetic makes it cleaner than Python
+- `DrawGrid` with camera offset handles negative world coordinates correctly via non-negative modulus
+- The demo visually confirms: diagonal Bresenham lines, EdgeExit choosing correct sides, arrowheads pointing right direction
+
+### What didn't work
+- Nothing — this was a clean port with no issues
+
+### What I learned
+- Go's `%` operator can return negative values for negative operands (unlike Python). Needed a `mod()` helper for grid calculations.
+- Returning `[]image.Point` from Bresenham (instead of a channel/iterator) is simpler and the slices are small enough that allocation is negligible.
+
+### What was tricky to build
+- Nothing particularly tricky — the Python reference was clear and the port was mechanical.
+
+### What warrants a second pair of eyes
+- `EdgeExit` uses float64 for normalized comparison. The integer truncation in the comparison (`abs(int(ndx*1000))`) is slightly ugly — might be cleaner with a direct float comparison.
+
+### What should be done in the future
+- Consider adding orthogonal-only line routing (horizontal-then-vertical segments) for cleaner flowchart edges — the current Bresenham produces diagonal lines.
+
+### Code review instructions
+- **Files**: `pkg/drawutil/line.go`, `pkg/drawutil/edge.go`, `pkg/drawutil/grid.go`, `pkg/drawutil/draw.go`, `pkg/drawutil/line_test.go`
+- **Run**: `make test` (31 tests across both packages)
+- **Visual**: `GOWORK=off go run ./cmd/cellbuf-demo/` — shows edges using EdgeExit + DrawArrowLine
+
+---
+
+## Step 9: Implement GRAIL-004 — graphmodel Package
+
+Built `pkg/graphmodel`: a generic spatial graph with positioned nodes, labeled edges, stable insertion-order iteration, and hit testing. This is a pure data model with no UI dependencies — fully reusable.
+
+### Prompt Context
+
+Continuing from the same "close and move on" prompt. GRAIL-003 was clean, GRAIL-004 equally so.
+
+**Commits:** a07d06b (Graph struct + all operations), c40575d (20 tests)
+
+### What I did
+- `pkg/graphmodel/spatial.go`: `Spatial` interface (Pos, Size), `CenterOf()`, `BoundsOf()` free functions
+- `pkg/graphmodel/graph.go`: `Graph[N Spatial, E any]` with `AddNode`, `RemoveNode`, `MoveNode`, `AddEdge`, `RemoveEdge`, `OutEdges`, `InEdges`, `HitTest`, `NodesInRect`
+- `pkg/graphmodel/graph_test.go`: 20 unit tests covering all operations
+
+### Why
+- Generic graph is the core data model for GRaIL — stores flowchart nodes and edges
+- Reusable for other graph-based TUI apps (dependency viewers, network diagrams, etc.)
+
+### What worked
+- All 20 tests passed on first run (51 total across 3 packages)
+- `MoveNode` with setter function callback cleanly solves the "Go interfaces don't have setters" problem
+- `HitTest` reverse iteration correctly returns topmost (last-inserted) node
+- `RemoveNode` cascade-deletes connected edges — verified by test
+
+### What didn't work
+- Nothing — clean implementation
+
+### What I learned
+- The `MoveNode(id, pos, setPos func(*N, image.Point))` pattern is idiomatic for generic types where the concrete type needs mutation. The caller provides the setter, the generic code provides the lookup.
+- `orderIDs []int` for stable iteration is simpler than a linked list and has negligible overhead for <100 nodes.
+
+### What was tricky to build
+- Nothing — the plan was detailed enough that implementation was mechanical.
+
+### What warrants a second pair of eyes
+- The `AddEdge` duplicate check is O(n) over all edges. For GRaIL's ~20 edges this is fine, but a production graph library would want an adjacency set.
+- `RemoveNode` does `g.edges[:0]` filter-in-place which reuses the underlying array — correct but subtle.
+
+### What should be done in the future
+- Consider adding `NodeCount()`, `EdgeCount()` convenience methods
+- If GRaIL needs undo/redo, the graph operations need to return undo closures
+
+### Code review instructions
+- **Files**: `pkg/graphmodel/spatial.go`, `pkg/graphmodel/graph.go`, `pkg/graphmodel/graph_test.go`
+- **Run**: `make test` (51 tests across 3 packages)
+- **Key**: `HitTest` reverse iteration and `RemoveNode` edge cleanup
