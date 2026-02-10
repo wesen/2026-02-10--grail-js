@@ -418,3 +418,67 @@ The key design decision was identifying four genuinely reusable packages (`cellb
 - **Document**: `design-doc/03-component-build-plan.md`
 - **Key sections**: §2 (Package Map), §3 (Build Steps), §7 (Risk Checkpoints)
 - **Validate**: Check that the dependency graph in §3 has no cycles and each step's "depends on" list is correct
+
+---
+
+## Step 6: Implement GRAIL-002 — cellbuf Package
+
+Built the `pkg/cellbuf` package: a reusable 2D character buffer with per-cell styling and efficient Lipgloss-based rendering. This is the first real Go code in the port — the foundation for edge and grid drawing.
+
+Hit a significant dependency issue: Lipgloss v2.0.0-beta.3 is broken against newer `x/ansi` (charmbracelet/lipgloss#599). The parent `go.work` workspace pulls in incompatible dependency versions. Resolved by pinning Lipgloss v2.0.0-beta.2 + x/ansi v0.8.0 and building with `GOWORK=off`.
+
+### Prompt Context
+
+**User prompt (verbatim):** "add tasks to implement GRAIL-002, then work through the tasks one by one, ocmmitting at each point, checking the task off updating the diary. Make sure to test things (with tmux if you need interactivity) as you go."
+
+**Assistant interpretation:** Implement the cellbuf package end-to-end, committing after each task, with tests.
+
+**Inferred user intent:** Start actual code implementation following the component plan, with proper process discipline.
+
+**Commit (code):** 9e6a6db — "GRAIL-002: Define Cell, StyleKey, Buffer types"
+**Commit (code):** d869ac9 — "GRAIL-002: Implement Render() with run-length encoded Style.Render()-per-run"
+**Commit (code):** b25d36b — "GRAIL-002: Unit tests (13 pass) + benchmarks"
+
+### What I did
+- Created `pkg/cellbuf/buffer.go`: `Cell`, `StyleKey`, `Buffer` structs + `New`, `Set`, `SetString`, `Fill`, `InBounds`
+- Created `pkg/cellbuf/render.go`: `Render()` with run-length encoded `Style.Render()`-per-run
+- Created `pkg/cellbuf/buffer_test.go`: 13 unit tests + 2 benchmarks
+- Set up `go.mod` with lipgloss/v2 v2.0.0-beta.2
+- Created `Makefile` with `GOWORK=off` to avoid workspace dep conflicts
+
+### Why
+- First package in the 12-step build plan — foundation for edge rendering
+- Zero dependencies on Bubbletea or app logic — pure library
+
+### What worked
+- All 13 tests pass on first run
+- Run-length encoding correctly merges consecutive same-styled cells
+- Out-of-bounds writes silently ignored (no panics)
+- Missing style keys fall back to plain text
+
+### What didn't work
+- **Lipgloss v2.0.0-beta.3 broken**: `x/ansi` API changed (methods like `Italic()` now require `bool` argument). Beta.3 was compiled against old API. See github.com/charmbracelet/lipgloss/issues/599.
+- **Workspace dep conflicts**: Parent `go.work` pulls `x/ansi` v0.11.3 from other modules, which is incompatible with lipgloss beta.2's `x/ansi` v0.8.0. Had to comment out this module from `go.work` and use `GOWORK=off`.
+- **Benchmark target missed**: Target was <2ms for 200×50. Got 3.9ms. The allocations (12K) are overwhelmingly inside `lipgloss.Style.Render()`, not our code. Realistic 150×40 buffer: 2.5ms — acceptable (15% of 16ms frame budget).
+
+### What I learned
+- Lipgloss `Style.Render()` allocates heavily internally (~50 allocs per call). With ~240 runs per frame, that's ~12K allocs. This is the cost of using Lipgloss over raw ANSI. For our buffer sizes, it's acceptable.
+- Go workspace (`go.work`) dependency resolution can force incompatible versions when modules in the workspace have conflicting transitive deps. `GOWORK=off` is the escape hatch.
+- Lipgloss v2 is in active development with breaking changes between beta releases. Pin exact versions.
+
+### What was tricky to build
+- **The dependency maze**: Three attempts to fix the build — (1) upgrade to beta.3 (still broken), (2) upgrade all x/* deps (different error), (3) downgrade to beta.2 with exact x/ansi v0.8.0. The root cause is that the Go module system's MVS picks the *highest* version of any transitive dep, and the workspace amplifies this by including all modules' deps.
+- **Render optimization**: Initial implementation allocated a `[]rune` per run. Changed to reuse a single `[]rune` buffer sized to `b.W`. This saved ~200 allocs/frame but the dominant cost remains inside Lipgloss.
+
+### What warrants a second pair of eyes
+- Whether `GOWORK=off` will cause problems as we add more packages that depend on each other within this module
+- Whether 2.5ms/frame for the edge buffer is acceptable when combined with node layer rendering and Canvas compositing overhead
+
+### What should be done in the future
+- Monitor lipgloss#599 for a fix — upgrade to beta.3+ when available
+- If Render performance becomes a bottleneck, consider a raw-ANSI fast path (24µs vs 2.5ms per the perf investigation)
+
+### Code review instructions
+- **Files**: `pkg/cellbuf/buffer.go`, `pkg/cellbuf/render.go`, `pkg/cellbuf/buffer_test.go`
+- **Run**: `make test` (13 tests), `make bench` (2 benchmarks)
+- **Key**: The `Render` function in `render.go` — verify run-length encoding correctness and that the sentinel style flush works for the last run in each row
