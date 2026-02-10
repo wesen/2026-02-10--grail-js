@@ -33,3 +33,8 @@ Added complete Lipgloss v2 Canvas/Layer architecture document (doc 02) — super
 
 Diary Steps 2-4: retroactive entries for Bubbletea analysis, Lipgloss v2 architecture, and StyleRanges benchmarks
 
+
+## 2026-02-10
+
+Added Lipgloss rendering performance reference doc with benchmark results and corrected recommendations
+
