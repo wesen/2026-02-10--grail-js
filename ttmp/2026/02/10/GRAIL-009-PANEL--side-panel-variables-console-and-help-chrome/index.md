@@ -1,7 +1,7 @@
 ---
 Title: Side panel — Variables, console, and help chrome
 Ticket: GRAIL-009-PANEL
-Status: active
+Status: complete
 Topics:
     - layout
     - bubbletea
@@ -13,10 +13,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.623672586-05:00
+LastUpdated: 2026-02-10T17:23:54.767588911-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # Side panel — Variables, console, and help chrome
 

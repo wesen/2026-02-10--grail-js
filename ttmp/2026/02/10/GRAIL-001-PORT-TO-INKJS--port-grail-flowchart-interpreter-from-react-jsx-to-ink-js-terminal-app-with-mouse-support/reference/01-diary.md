@@ -892,3 +892,32 @@ Continuing sequential build. No issues.
 - **Files**: `internal/grailui/layers.go` (new functions), `internal/grailui/view.go` (wiring)
 - **Run**: `GOWORK=off go run ./cmd/grail/` — complete flowchart with edges, labels, grid
 - **Key**: `buildEdgeCanvasLayer` — the cellbuf→Layer pipeline
+
+---
+
+## Step 15: Implement GRAIL-009 — Side Panel
+
+Added variables, console, and help panels to the right of the canvas with a vertical separator. The layout builder correctly handles the right-side allocation. All three panel sections render with placeholder content — will be wired to the interpreter in GRAIL-012.
+
+### Prompt Context
+
+Continuing sequential build. No issues.
+
+**Commit:** d412086
+
+### What I did
+- `internal/grailui/panel.go`: `buildVarsPanelLayer`, `buildConsolePanelLayer`, `buildHelpPanelLayer`, `buildSeparatorLayer` + panel-specific styles
+- Updated `view.go` layout: added `RightFixed("panel", 34)`, computed panel sub-regions (vars=6, help=8, console=remaining), wired all layers
+
+### What worked
+- Layout builder correctly gives canvas 66 cols, panel 34 cols on 100-wide terminal
+- Vertical separator renders cleanly between canvas and panel
+- Panel sections fill their allocated height with padding
+- Help text shows all keybindings statically
+
+### What didn't work
+- Nothing — straightforward layer composition
+
+### Code review instructions
+- **Files**: `internal/grailui/panel.go`, `internal/grailui/view.go`
+- **Run**: `GOWORK=off go run ./cmd/grail/` — full layout visible at 100+ cols wide
