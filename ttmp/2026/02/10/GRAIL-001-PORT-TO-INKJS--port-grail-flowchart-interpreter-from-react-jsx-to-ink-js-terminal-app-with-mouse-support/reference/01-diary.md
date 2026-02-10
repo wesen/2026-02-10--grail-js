@@ -706,3 +706,71 @@ Also fixed `.gitignore` (`cellbuf-demo` was matching the `cmd/cellbuf-demo/` dir
 - **Files**: `pkg/drawutil/draw.go`, `cmd/cellbuf-demo/main.go`
 - **Run**: `make test` (51 tests), `GOWORK=off go run ./cmd/cellbuf-demo/` (visual)
 - **Compare**: Python `grail.py:410-420` vs Go `drawutil.pointChar` — should produce equivalent characters
+
+---
+
+## Step 11: Implement GRAIL-005 — Scaffold (Checkpoint A) ⭐
+
+**This was the most important step in the entire project.** The scaffold validates that the Bubbletea v2 + Lipgloss v2 stack actually works. Three major API discoveries that invalidate assumptions in the design docs:
+
+1. **`View()` returns a `tea.View` struct, not a `string`.** AltScreen and MouseMode are fields on the View, not options passed to `NewProgram()`.
+2. **`Canvas.Compose(layer)` ignores the layer's X/Y/Z.** Layer positioning only works through `Compositor`, not direct canvas composition.
+3. **`Compositor` is the key API** — it flattens layer hierarchies, handles Z-sorting, and provides `Hit()` for mouse interaction. This replaces the `Canvas.Hit()` API from the design docs.
+
+### Prompt Context
+
+Continuing from "close and move on" prompt. This was Checkpoint A from the build plan.
+
+**Commit:** cf7d75c — "GRAIL-005: Scaffold — Bubbletea v2 + Lipgloss v2 Compositor app"
+
+### What I did
+1. Added `charm.land/bubbletea/v2@v2-exp` dependency (resolved to v2.0.0-rc.2)
+2. Explored the v2 API surface with `go doc` — discovered the View struct, Compositor, and Canvas APIs
+3. Built a minimal app: dark green background, title at top, mouse coords at bottom, orange crosshair at mouse position
+4. Tested initial build with `Canvas.Compose(layer)` — layers didn't position correctly
+5. Read `layer.go` source — discovered `Layer.Draw()` ignores X/Y, just draws at the passed `area`
+6. Found `Compositor` — creates from layers, flattens hierarchy, sorts by Z, handles positioning
+7. Rewrote to use `NewCompositor(layers...) → canvas.Compose(comp)`
+8. Verified in tmux: title at top, footer at bottom, background fills screen, `q` exits cleanly
+
+### Why
+- Checkpoint A: validate the entire v2 stack before investing in 8 more tickets
+- Every subsequent step depends on this: layout regions, node rendering, mouse interaction
+
+### What worked
+- `charm.land/bubbletea/v2@v2-exp` resolved to RC2 and compiled cleanly
+- `tea.View` struct with `AltScreen = true` and `MouseMode = tea.MouseModeAllMotion` — clean declarative config
+- `Compositor` positioning works correctly — title at Y=0, footer at Y=height-1, crosshair at mouse position
+- `q` key exits cleanly to normal terminal
+- No panics on startup, rendering, or exit
+
+### What didn't work
+- **First attempt used `Canvas.Compose(layer)` directly** — all layers rendered at (0,0) because `Layer.Draw()` ignores X/Y positioning. The X/Y fields are metadata consumed only by `Compositor.flatten()`.
+- **Design docs assumed `lipgloss.NewCanvas(layers...).Render()`** — this API doesn't exist. Canvas takes (width, height), not layers.
+- **Design docs assumed `Canvas.Hit(x, y)`** — this API is on `Compositor`, not Canvas. `Compositor.Hit(x, y)` returns a `LayerHit` with ID/bounds.
+- **Mouse tracking couldn't be verified via tmux scripting** — tmux doesn't relay synthetic mouse events to the child process's mouse reporting mode. Need interactive testing.
+
+### What I learned
+- **The Lipgloss v2 architecture is `Layer → Compositor → Canvas → Render()`.** Not `Layer → Canvas.Compose → Render()` as the design docs assumed. This is a cleaner separation: Layer is a pure data structure, Compositor handles flattening/sorting/hit-testing, Canvas handles cell-level rendering.
+- **`tea.View` struct is the v2 way to configure terminal behavior.** No more `tea.WithAltScreen()` or `tea.WithMouseAllMotion()` program options — they're per-view fields. This means you can switch between alt-screen and inline, or toggle mouse mode, per render cycle.
+- **`Compositor.Hit(x, y)` replaces the hypothetical `Canvas.Hit()`** from design doc 02. Same concept (topmost layer ID at coordinates), different location. The hit test works on flattened/z-sorted layers with absolute positions.
+- **Bubbletea v2 RC2 is stable enough for development.** No crashes, clean lifecycle, familiar Update/View pattern.
+
+### What was tricky to build
+- **Finding the right API path.** The `go doc` output for `Canvas.Compose` says it takes `uv.Drawable`, and `Layer` implements `uv.Drawable`. So `canvas.Compose(layer)` compiles fine — but it draws the layer content at the canvas bounds, ignoring X/Y. You have to read the `Layer.Draw()` source to realize it doesn't use its own position. The `Compositor` is what does the coordinate math. This took 3 test scripts to figure out.
+- **Background filling.** `lipgloss.NewStyle().Width(w).Height(h).Background(...).Render("")` produces a styled block but Canvas trailing-space stripping can eat it. Explicit `strings.Repeat(" ", w)` × h lines works reliably.
+
+### What warrants a second pair of eyes
+- Whether `Compositor.Render()` (which creates a temporary canvas internally) is adequate, or whether we should always use `canvas.Compose(comp)` for fixed-size output. The scaffold uses the latter for predictable sizing.
+- The `OnMouse` field on `tea.View` — this allows view-level mouse dispatch without going through `Update()`. Might be useful for per-layer mouse handling later, but needs investigation.
+
+### What should be done in the future
+- **Update design docs 02 and 03** to reflect the correct API: `Compositor` not `Canvas` for positioning and hit testing, `tea.View` struct not program options for AltScreen/MouseMode
+- **Checkpoint B (GRAIL-010)**: verify `Compositor.Hit(x, y)` coordinates match `MouseMsg.Mouse().X/Y`
+- **Interactive mouse test**: run `GOWORK=off go run ./cmd/grail/` in a real terminal (not tmux scripting) and move the mouse to verify crosshair tracking
+- **Performance**: measure Compositor.Render() time with 50+ layers (node count for a typical GRaIL flowchart)
+
+### Code review instructions
+- **File**: `cmd/grail/main.go`
+- **Run**: `GOWORK=off go run ./cmd/grail/` — should show dark green screen, title, footer, orange `+` crosshair. Press `q` to exit.
+- **Key discovery**: `Canvas.Compose(layer)` ≠ positioned rendering. Must use `Compositor` for X/Y/Z.
