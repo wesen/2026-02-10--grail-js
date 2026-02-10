@@ -1157,3 +1157,541 @@ lines) for a simpler expression language.
 4. **Node data model** — struct translation
 5. **Hit testing** — point-in-rect check
 6. **Edge auto-labeling** — Y/N assignment logic
+
+---
+---
+
+# ADDENDUM: How Lipgloss v2 Compositing Changes Everything
+
+## 14. The Paradigm Shift
+
+Lipgloss v2.0.0-beta.2 introduces `Canvas` and `Layer` — a compositing
+system that directly addresses the three hardest problems identified above:
+
+| Problem (from §2, §6) | v1 Bubbletea approach | v2 Canvas/Layer approach |
+|---|---|---|
+| Per-character canvas rendering | Build CellBuffer from scratch (~150 lines) | **Nodes become Layers with Lipgloss styling** |
+| Modal overlay (ANSI splicing) | Splice ANSI strings or full-screen buffer | **High-Z Layer placed on Canvas** |
+| Mouse hit testing | Manual coordinate translation + point-in-rect | **`Canvas.Hit(x, y)` + `Layer.ID()`** |
+
+The mental model shifts from "I own a 2D character grid and paint into it"
+to "I have styled content blocks positioned on a canvas with Z-ordering,
+and the framework composites them."
+
+This is closer to how the **original React/SVG** version works (absolutely-
+positioned divs with z-index) than the Python/Textual version is.
+
+---
+
+## 15. Revised Architecture with v2 Compositing
+
+### 15.1 The Layer Map
+
+Every visual element becomes a Layer with a position, Z-index, and
+optional ID for hit testing:
+
+```
+Full-screen Canvas:
+    Z=0  Layer "toolbar"        X=0, Y=0
+    Z=0  Layer "grid-and-edges" X=0, Y=3          // character buffer (only for this!)
+    Z=0  Layer "panel-border"   X=canvasW, Y=3
+    Z=0  Layer "vars-panel"     X=canvasW+1, Y=3
+    Z=0  Layer "console-panel"  X=canvasW+1, Y=3+varsH
+    Z=0  Layer "help-panel"     X=canvasW+1, Y=3+varsH+consoleH
+    Z=0  Layer "footer"         X=0, Y=termH-1
+    
+    Z=2  Layer "node-1"         X=node1.screenX, Y=node1.screenY, ID="node-1"
+    Z=2  Layer "node-2"         X=node2.screenX, Y=node2.screenY, ID="node-2"
+    Z=2  ...one per node...
+    
+    Z=3  Layer "label-Y"        X=labelX, Y=labelY
+    Z=3  Layer "label-N"        X=labelX, Y=labelY
+    
+    Z=5  Layer "connect-preview" X=..., Y=...     // only when connecting
+    
+    Z=100 Layer "edit-modal"    X=centered, Y=centered  // only when editing
+```
+
+### 15.2 What This Eliminates
+
+**The entire CellBuffer for nodes is gone.** Instead of maintaining a
+`[][]Cell` grid and manually painting corners, borders, and text character
+by character, each node is a Lipgloss styled box:
+
+```
+FUNCTION renderNodeLayer(node, isSelected, isExecuting) Layer:
+    // Choose style based on state
+    style = lipgloss.NewStyle()
+    
+    IF node.Type == "decision":
+        style = style.Border(DoubleBorder())
+    ELSE IF node.Type == "terminal":
+        style = style.Border(RoundedBorder())
+    ELSE:
+        style = style.Border(NormalBorder())
+    
+    IF isExecuting:
+        style = style.
+            BorderForeground(color("#ffcc00")).
+            Foreground(color("#ffee66")).
+            Bold(true)
+    ELSE IF isSelected:
+        style = style.
+            BorderForeground(color("#00ffee")).
+            Foreground(color("#00ffee")).
+            Bold(true)
+    ELSE:
+        colors = NODE_PALETTE[node.Type]
+        style = style.
+            BorderForeground(colors.border).
+            Foreground(colors.text)
+    
+    style = style.
+        Width(node.Info().W - 2).    // inner width (border adds 2)
+        Height(node.Info().H - 2).   // inner height
+        Align(lipgloss.Center, lipgloss.Center)
+    
+    content = style.Render(node.Text)
+    
+    // Convert world coords to screen coords
+    screenX = node.X - camX
+    screenY = node.Y - camY + TOOLBAR_H
+    
+    return lipgloss.NewLayer(content).
+        X(screenX).
+        Y(screenY).
+        Z(2).
+        ID(fmt.Sprintf("node-%d", node.ID))
+```
+
+**Compare this to the CellBuffer approach (§3.4):** that was 40+ lines of
+manual corner-placing, border-drawing, interior-clearing, text-centering.
+The Lipgloss version is ~25 lines that read like a style sheet. And Lipgloss
+handles the box-drawing characters, padding, and alignment for you.
+
+**The modal overlay problem (§6.3) vanishes entirely:**
+
+```
+FUNCTION renderEditModal(model) Layer:
+    // Build the modal content with Lipgloss styles
+    titleStyle = lipgloss.NewStyle().Bold(true).Foreground(color("#00d4a0"))
+    labelStyle = lipgloss.NewStyle().Foreground(color("#00d4a0"))
+    boxStyle = lipgloss.NewStyle().
+        Border(NormalBorder()).
+        BorderForeground(color("#00d4a0")).
+        Background(color("#0a1510")).
+        Width(50).
+        Padding(1, 2)
+    
+    content = lipgloss.JoinVertical(lipgloss.Left,
+        titleStyle.Render("✏️  EDIT — " + nodeTypeName),
+        labelStyle.Render("Label:"),
+        model.editLabel.View(),
+        labelStyle.Render("Code:"),
+        model.editCode.View(),
+        "[enter] Save  [esc] Cancel",
+    )
+    
+    return lipgloss.NewLayer(boxStyle.Render(content)).
+        X((model.width - 54) / 2).    // centered
+        Y((model.height - 12) / 2).
+        Z(100)                          // on top of everything
+```
+
+No ANSI splicing. No buffer overlay math. Just a layer at Z=100.
+
+### 15.3 What Still Needs a Character Buffer
+
+**Edges and grid dots.** These are sparse, non-rectangular content that
+can't be expressed as Lipgloss styled boxes. An edge is a diagonal line
+drawn with Bresenham — it needs character-by-character placement.
+
+The solution: keep a **small CellBuffer just for the background layer**.
+This buffer covers only the canvas area (not the full terminal), and it
+only draws grid dots and edge lines. Nodes are NOT drawn into it — they're
+separate layers that composite on top.
+
+```
+FUNCTION renderBackgroundLayer(model) Layer:
+    buf = NewCellBuffer(model.canvasW, model.canvasH)
+    
+    // Grid dots
+    drawGrid(buf, model.camX, model.camY)
+    
+    // Edges (just the lines, no nodes!)
+    FOR each edge IN model.edges:
+        drawEdgeLine(buf, edge, model.nodes, model.camX, model.camY,
+                     model.execNodeID)
+    
+    // Connect preview
+    IF model.connectingID != nil:
+        drawConnectPreview(buf, ...)
+    
+    // Render to string — this IS still needed
+    bgString = buf.Render()
+    
+    return lipgloss.NewLayer(bgString).X(0).Y(TOOLBAR_H).Z(0)
+```
+
+The CellBuffer is now ~60% smaller because it only handles:
+- Grid dots (simple)
+- Edge lines (Bresenham)
+- Edge arrowheads
+
+It does NOT handle:
+- Node shapes (eliminated — Lipgloss boxes)
+- Node text centering (eliminated — Lipgloss alignment)
+- Node selection/execution highlighting (eliminated — Lipgloss styles)
+- Modal overlay rendering (eliminated — Layer Z-ordering)
+
+---
+
+## 16. Hit Testing: The Biggest Win
+
+### 16.1 Before (Manual)
+
+In the v1 approach, mouse handling requires:
+1. Subtract toolbar height from absolute Y
+2. Add camera offset to get world coordinates
+3. Loop through all nodes in reverse order
+4. Check if point is inside node's bounding rectangle
+5. Return the first hit
+
+That's ~20 lines of coordinate math per click, and you must keep it in
+sync with the rendering.
+
+### 16.2 After (Canvas.Hit)
+
+```
+FUNCTION handleMousePress(model, msg MouseMsg):
+    // Ask the canvas which layer was clicked
+    hit = model.canvas.Hit(msg.X, msg.Y)
+    
+    IF hit == nil:
+        // Clicked empty space
+        IF model.tool == ADD:
+            // Place new node (still need coord translation for world pos)
+            worldX = msg.X + model.camX
+            worldY = msg.Y - TOOLBAR_H + model.camY
+            addNode(model, worldX, worldY)
+        ELSE:
+            model.selectedID = nil
+        return
+    
+    id = hit.GetID()
+    
+    IF strings.HasPrefix(id, "node-"):
+        nodeID = parseIntAfterPrefix(id, "node-")
+        
+        IF model.tool == CONNECT:
+            IF model.connectingID == nil:
+                model.connectingID = &nodeID
+            ELSE:
+                addEdge(model, *model.connectingID, nodeID)
+                model.connectingID = nil
+                model.tool = SELECT
+        ELSE:
+            model.selectedID = &nodeID
+            startDrag(model, nodeID, msg.X, msg.Y)
+    
+    ELSE IF id == "edit-modal":
+        // Click inside modal — don't deselect
+        pass
+    
+    ELSE IF id == "toolbar":
+        // Could add clickable toolbar buttons with nested layers/IDs
+        pass
+```
+
+The key insight: **hit testing is now consistent with rendering by
+construction**. In the CellBuffer approach, the hit test math and the
+drawing math are separate codepaths that must agree. With Canvas.Hit,
+the same Layer that is rendered is the same Layer that is hit-tested.
+There's no way for them to desync.
+
+### 16.3 Nested Hit Testing for Toolbar Buttons
+
+Lipgloss v2 supports nested layers via `Layer.AddLayers(...)`. This means
+you could make toolbar buttons individually clickable:
+
+```
+FUNCTION renderToolbar(model) Layer:
+    // Each button is a child layer with an ID
+    selBtn = lipgloss.NewLayer(renderButton("SEL", model.tool == SELECT)).
+        X(10).Y(0).ID("btn-select")
+    addBtn = lipgloss.NewLayer(renderButton("ADD", model.tool == ADD)).
+        X(20).Y(0).ID("btn-add")
+    linkBtn = lipgloss.NewLayer(renderButton("LINK", model.tool == CONNECT)).
+        X(30).Y(0).ID("btn-connect")
+    runBtn = lipgloss.NewLayer(renderButton("▶ RUN", false)).
+        X(50).Y(0).ID("btn-run")
+    
+    toolbarBg = lipgloss.NewStyle().
+        Width(model.width).
+        Height(TOOLBAR_H).
+        Background(color("#0a1510")).
+        Render("  GRaIL FLOWCHART INTERPRETER")
+    
+    toolbar = lipgloss.NewLayer(toolbarBg).X(0).Y(0).Z(0)
+    toolbar.AddLayers(selBtn, addBtn, linkBtn, runBtn)
+    
+    return toolbar
+```
+
+Then in `handleMousePress`:
+```
+    ELSE IF id == "btn-select": model.tool = SELECT
+    ELSE IF id == "btn-add":    model.tool = ADD
+    ELSE IF id == "btn-connect": model.tool = CONNECT
+    ELSE IF id == "btn-run":    startProgram(model)
+```
+
+This is clickable toolbar buttons for free — something that would be
+extremely tedious with manual coordinate checking.
+
+---
+
+## 17. Revised View() Function
+
+```
+FUNCTION View(model) string:
+    var layers []lipgloss.Layer
+    
+    // ── Layer 0: Toolbar ──
+    layers = append(layers, renderToolbar(model))
+    
+    // ── Layer 0: Grid + Edges background ──
+    layers = append(layers, renderBackgroundLayer(model))
+    
+    // ── Layer 0: Panel sections ──
+    layers = append(layers,
+        renderVarsPanel(model),
+        renderConsolePanel(model),
+        renderHelpPanel(model),
+        renderFooter(model),
+    )
+    
+    // ── Layer 0: Panel border ──
+    borderStr = strings.Repeat("│\n", model.canvasH)
+    layers = append(layers,
+        lipgloss.NewLayer(borderStr).X(model.canvasW).Y(TOOLBAR_H).Z(0),
+    )
+    
+    // ── Layer 2: Nodes (one layer per node) ──
+    FOR each node IN model.nodes:
+        isSelected = (model.selectedID != nil && *model.selectedID == node.ID)
+        isExec     = (model.execNodeID != nil && *model.execNodeID == node.ID)
+        
+        // Only add if visible (screen coords within canvas bounds)
+        screenX = node.X - model.camX
+        screenY = node.Y - model.camY + TOOLBAR_H
+        IF screenX + node.Info().W >= 0 AND screenX < model.canvasW AND
+           screenY + node.Info().H >= 0 AND screenY < model.canvasH + TOOLBAR_H:
+            layers = append(layers,
+                renderNodeLayer(node, isSelected, isExec, model.camX, model.camY))
+    
+    // ── Layer 3: Edge labels ──
+    FOR each edge IN model.edges:
+        IF edge.Label != "":
+            layers = append(layers,
+                renderEdgeLabel(edge, model.nodes, model.camX, model.camY))
+    
+    // ── Layer 5: Connect preview (only in connect mode) ──
+    IF model.connectingID != nil:
+        layers = append(layers, renderConnectPreview(model))
+    
+    // ── Layer 100: Edit modal (only when editing) ──
+    IF model.editOpen:
+        layers = append(layers, renderEditModal(model))
+    
+    // ── Compose and render ──
+    model.canvas = lipgloss.NewCanvas(layers...)
+    return model.canvas.Render()
+```
+
+This is remarkably clean. The `View()` function reads like a description
+of the visual hierarchy, not a rendering algorithm. Each layer is
+independently styled, positioned, and z-ordered.
+
+---
+
+## 18. Revised Effort Estimate
+
+| Component | v1 Bubbletea (CellBuffer) | v2 Bubbletea (Canvas/Layer) | Delta |
+|---|---|---|---|
+| CellBuffer + Render | ~150 lines | ~80 lines (edges/grid only) | **-47%** |
+| Node rendering | ~80 lines (manual box drawing) | ~30 lines (Lipgloss styled boxes) | **-63%** |
+| Modal overlay | ~80 lines (ANSI splice or buffer) | ~20 lines (high-Z Layer) | **-75%** |
+| Mouse hit testing | ~40 lines (manual coord math) | ~15 lines (Canvas.Hit) | **-63%** |
+| Layout composition | ~50 lines (manual JoinH/V) | ~40 lines (Layer positioning) | -20% |
+| Drawing primitives (edges) | ~200 lines | ~200 lines (unchanged) | 0% |
+| Focus routing | ~60 lines | ~60 lines (unchanged) | 0% |
+| Interpreter | ~250 lines | ~250 lines (unchanged) | 0% |
+| Toolbar rendering | ~60 lines | ~40 lines (clickable child layers) | -33% |
+| Panel rendering | ~90 lines | ~80 lines (slight simplification) | -11% |
+| Elm glue (Update) | ~200 lines | ~180 lines (simpler hit handling) | -10% |
+| Data model | ~80 lines | ~80 lines (unchanged) | 0% |
+| **Total** | **~1400–1600 lines** | **~1050–1200 lines** | **~25-30% less** |
+
+The savings come primarily from three areas:
+1. **Nodes as Lipgloss boxes** instead of manual character painting
+2. **Modal as a Layer** instead of ANSI splicing
+3. **Canvas.Hit** instead of manual hit testing
+
+---
+
+## 19. The Background Layer: Remaining CellBuffer
+
+Even with v2, you still need a character buffer for edges and grid dots.
+But it's simpler because it only draws sparse line characters onto a
+blank background — no boxes, no text, no styling of rectangular regions.
+
+```
+STRUCT MiniBuffer:
+    width, height  int
+    chars          [][]rune       // just characters
+    styles         [][]StyleKey   // enum index into palette
+
+FUNCTION (buf) Render() string:
+    // Same run-length encoding as before (§2.2),
+    // but the buffer is simpler: only 3-4 style keys
+    // (BG, GRID, EDGE_NORMAL, EDGE_ACTIVE)
+    // instead of 15+
+    ...
+
+FUNCTION drawEdgeLine(buf, edge, nodes, camX, camY, execNodeID):
+    from = nodeByID(edge.FromID)
+    to   = nodeByID(edge.ToID)
+    active = (execNodeID != nil && *execNodeID == edge.ToID)
+    style = IF active THEN EDGE_ACTIVE ELSE EDGE_NORMAL
+    
+    p1 = getEdgeExit(from, to)
+    p2 = getEdgeExit(to, from)
+    
+    // Buffer-relative coords
+    bx1, by1 = p1.X - camX, p1.Y - camY
+    bx2, by2 = p2.X - camX, p2.Y - camY
+    
+    points = bresenham(bx1, by1, bx2, by2)
+    FOR i, pt IN points:
+        dx, dy = direction(points, i)
+        buf.Set(pt.X, pt.Y, lineChar(dx, dy), style)
+    
+    // Arrowhead
+    IF len(points) >= 2:
+        last, prev = points[len-1], points[len-2]
+        buf.Set(last.X, last.Y,
+                arrowChar(last.X-prev.X, last.Y-prev.Y), style)
+```
+
+The buffer palette shrinks from ~15 styles to ~4 styles. Node-related
+styles (6 border styles, 6 text styles, selected, executing) are all
+handled by Lipgloss on the Layer side. The buffer only needs:
+- `BG` (background)
+- `GRID` (dim dot)
+- `EDGE_NORMAL` (green line)
+- `EDGE_ACTIVE` (yellow line, bold)
+
+---
+
+## 20. Transparency and Layering: The Subtlety
+
+### 20.1 The Opacity Question
+
+When Layer A (Z=0, background with edges) and Layer B (Z=2, a node box)
+overlap, the compositing system must decide: does Layer B's content fully
+replace Layer A's content in the overlapping region?
+
+**Yes.** In terminal compositing, every character cell within a Layer's
+bounds is opaque. A space character in a higher-Z layer overwrites whatever
+is in the lower-Z layer at that position. This is correct behavior for
+GRaIL: node boxes should fully obscure any edge lines that pass through
+them (which is exactly what our Python CellBuffer approach does by drawing
+nodes last).
+
+### 20.2 Why This Is Perfect for Flowcharts
+
+The original React/SVG version draws edges as `<line>` elements with
+`z-index: 1` and nodes as `<div>` elements with `z-index: 2`. Nodes
+naturally occlude edges. The Lipgloss v2 layer model replicates this
+exactly: edge background at Z=0, nodes at Z=2, labels at Z=3, modal at
+Z=100.
+
+### 20.3 Where Transparency Would Help But Doesn't Exist
+
+If edges could be semi-transparent layers (only the line characters are
+opaque, spaces are see-through), you could eliminate the background
+CellBuffer entirely — each edge would be its own Layer. But since spaces
+are opaque in terminal compositing, edges must share a single background
+layer to avoid occluding each other and the grid dots.
+
+This is a minor limitation. The background CellBuffer for edges is simple
+(~80 lines) and well-understood.
+
+---
+
+## 21. Bubble Tea v2 Integration Note
+
+The Lipgloss v2 compositing system is **designed to work with Bubble Tea
+v2** (not v1). Specifically:
+
+- `lipgloss.Canvas` implements Bubble Tea v2's `tea.Layer` interface
+- Bubble Tea v2 has its own view/layer concepts that align with
+  the compositing model
+- The Charm team has explicitly stated v2 compositing + Bubble Tea v1
+  is not a supported combination
+
+This means if you adopt this architecture, you commit to the **v2 beta
+stack**: `lipgloss/v2` + `bubbletea/v2`. This is pre-release software.
+The API may change before final release. But for a new project (not
+migrating an existing app), this is acceptable.
+
+### Dependency chain:
+```
+go.mod:
+    github.com/charmbracelet/bubbletea/v2  (latest v2 beta)
+    github.com/charmbracelet/lipgloss/v2   (v2.0.0-beta.2+)
+    github.com/charmbracelet/bubbles/v2    (for textinput, viewport)
+    github.com/dop251/goja                 (JS interpreter)
+```
+
+---
+
+## 22. Revised Summary: What You Build vs What The Framework Gives You
+
+### You must still build:
+1. **Edge/grid CellBuffer** — simplified (~80 lines), only for sparse line drawing
+2. **Layout arithmetic** — still manual on WindowSizeMsg (~50 lines)
+3. **Focus routing** — still manual key dispatch (~60 lines)
+4. **Coordinate translation for drag/add** — world↔screen math for node placement (~20 lines)
+
+### Now provided by Lipgloss v2 Canvas/Layer:
+1. ~~**Full CellBuffer**~~ → **Nodes are Lipgloss styled boxes** (Layer)
+2. ~~**Buffer-to-string renderer for nodes**~~ → **Lipgloss.Render()** handles it
+3. ~~**Modal overlay / ANSI splicing**~~ → **High-Z Layer on Canvas**
+4. ~~**Manual hit testing**~~ → **Canvas.Hit(x, y) + Layer.ID()**
+5. ~~**Manual Z-ordering (draw edges then nodes)**~~ → **Layer.Z()**
+6. **NEW: Clickable toolbar buttons** via nested layers + hit testing
+
+### Still ports directly:
+1. FlowInterpreter (Goja)
+2. Bresenham line drawing
+3. Edge exit calculation
+4. Data model
+5. Edge auto-labeling
+
+### Bottom line
+
+With Lipgloss v2, the port drops from ~1500 lines to ~1100 lines, and
+more importantly, the **hardest problems disappear**:
+
+- Node rendering goes from "manual character painting" to "Lipgloss style sheet"
+- Modal overlay goes from "the hardest problem in Bubbletea" to "one line of Z=100"
+- Hit testing goes from "keep two codepaths in sync" to "consistent by construction"
+
+The remaining custom code is well-scoped: edge drawing (pure math),
+layout arithmetic (simple), focus routing (tedious but straightforward).
+
+The architecture becomes recognizably similar to the original React/SVG
+version: absolutely-positioned styled boxes with z-index layering, which
+is exactly what Lipgloss v2 Canvas/Layer provides for the terminal.

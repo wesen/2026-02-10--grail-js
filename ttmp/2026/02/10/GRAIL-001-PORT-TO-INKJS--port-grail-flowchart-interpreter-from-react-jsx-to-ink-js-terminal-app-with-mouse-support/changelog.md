@@ -18,3 +18,8 @@ Complete port of GRaIL from React/JSX to Textual Python TUI with mouse support, 
 
 Added deep Bubbletea port analysis design doc with pseudocode for all subsystems
 
+
+## 2026-02-10
+
+Major addendum to Bubbletea port analysis: Lipgloss v2 Canvas/Layer compositing eliminates CellBuffer for nodes, solves modal overlay, provides built-in hit testing
+
