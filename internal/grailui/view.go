@@ -57,8 +57,14 @@ func (m Model) View() tea.View {
 
 	// Toolbar content
 	toolStr := toolNames[m.CurrentTool]
+	if m.CurrentTool == ToolAdd {
+		toolStr = fmt.Sprintf("ADD [%s]", m.AddNodeType)
+	}
+	if m.ConnectFromID != nil {
+		toolStr = fmt.Sprintf("CONNECT from #%d → click target", *m.ConnectFromID)
+	}
 	tbContent := fmt.Sprintf(
-		" GRaIL  │  [s]elect [a]dd [c]onnect  │  Tool: %s  │  ←↑↓→ pan  │  [q]uit",
+		" GRaIL  │  [s]elect [a]dd [c]onnect  │  %s  │  ←↑↓→ pan  │  [q]uit",
 		toolStr,
 	)
 	layers = append(layers,
@@ -93,6 +99,12 @@ func (m Model) View() tea.View {
 	// Edge labels (Z=3, on top of nodes)
 	labelLayers := buildEdgeLabelLayers(m.Graph, m.CamX, m.CamY, canvasRegion.Rect)
 	layers = append(layers, labelLayers...)
+
+	// Connect preview (Z=5, dashed line from source to mouse)
+	if preview := buildConnectPreviewLayer(m.Graph, m.ConnectFromID,
+		m.MouseX, m.MouseY, m.CamX, m.CamY, canvasRegion.Rect); preview != nil {
+		layers = append(layers, preview)
+	}
 
 	// Side panel
 	pr := panelRegion.Rect

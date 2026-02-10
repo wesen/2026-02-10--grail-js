@@ -207,6 +207,54 @@ func buildNodeLayers(g *FlowGraph, camX, camY int, viewport image.Rectangle,
 	return layers
 }
 
+// buildConnectPreviewLayer draws a dashed line from the connect source node
+// center to the current mouse position. Returns nil if not in connect mode.
+func buildConnectPreviewLayer(g *FlowGraph, connectFromID *int, mouseX, mouseY, camX, camY int,
+	viewport image.Rectangle) *lipgloss.Layer {
+
+	if connectFromID == nil {
+		return nil
+	}
+	node := g.Node(*connectFromID)
+	if node == nil {
+		return nil
+	}
+
+	w := viewport.Dx()
+	h := viewport.Dy()
+	if w <= 0 || h <= 0 {
+		return nil
+	}
+
+	connStyle := cellbuf.StyleKey(10)
+	connStyles := map[cellbuf.StyleKey]lipgloss.Style{
+		connStyle: lipgloss.NewStyle().Foreground(c("#00ffc8")).Background(c("#080e0b")),
+	}
+
+	buf := cellbuf.New(w, h, styleBG)
+
+	// Source: node center in buffer coords
+	center := graphmodel.CenterOf(node.Data)
+	sx := center.X - camX
+	sy := center.Y - camY
+
+	// Target: mouse in buffer coords
+	tx := mouseX - viewport.Min.X
+	ty := mouseY - viewport.Min.Y
+
+	drawutil.DrawDashedLine(buf, sx, sy, tx, ty, connStyle)
+
+	// Merge connStyles into bufStyles for rendering
+	merged := make(map[cellbuf.StyleKey]lipgloss.Style, len(bufStyles)+1)
+	for k, v := range bufStyles {
+		merged[k] = v
+	}
+	merged[connStyle] = connStyles[connStyle]
+
+	rendered := buf.Render(merged)
+	return lipgloss.NewLayer(rendered).X(viewport.Min.X).Y(viewport.Min.Y).Z(5).ID("connect-preview")
+}
+
 // nodeCenter returns the screen-space center of a node.
 func nodeCenter(d FlowNodeData, camX, camY int, viewport image.Rectangle) image.Point {
 	c := graphmodel.CenterOf(d)

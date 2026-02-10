@@ -20,12 +20,26 @@ type Model struct {
 	SelectedID     *int
 	ExecID         *int
 	CurrentTool    Tool
+	AddNodeType    string // node type for add tool
+
+	// Drag state
+	Dragging   bool
+	DragNodeID int
+	DragOffX   int
+	DragOffY   int
+
+	// Connect state
+	ConnectFromID *int
+
+
 }
 
 // NewModel creates the initial model with the demo flowchart.
 func NewModel() Model {
 	return Model{
-		Graph: MakeInitialGraph(),
+		Graph:       MakeInitialGraph(),
+		AddNodeType: "process",
+		DragNodeID:  -1,
 	}
 }
 
