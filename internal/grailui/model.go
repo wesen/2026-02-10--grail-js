@@ -1,6 +1,11 @@
 package grailui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/wesen/grail/internal/flowinterp"
+)
 
 // Tool is the current interaction mode.
 type Tool int
@@ -31,7 +36,13 @@ type Model struct {
 	// Connect state
 	ConnectFromID *int
 
-
+	// Interpreter state
+	Interp      *flowinterp.Interpreter
+	Running     bool
+	AutoRunning bool
+	AutoSpeed   time.Duration
+	InputMode   bool   // waiting for user input
+	InputBuf    string // typed input text
 }
 
 // NewModel creates the initial model with the demo flowchart.
@@ -40,6 +51,7 @@ func NewModel() Model {
 		Graph:       MakeInitialGraph(),
 		AddNodeType: "process",
 		DragNodeID:  -1,
+		AutoSpeed:   400 * time.Millisecond,
 	}
 }
 

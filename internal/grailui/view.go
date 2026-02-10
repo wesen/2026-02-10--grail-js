@@ -63,9 +63,25 @@ func (m Model) View() tea.View {
 	if m.ConnectFromID != nil {
 		toolStr = fmt.Sprintf("CONNECT from #%d → click target", *m.ConnectFromID)
 	}
+
+	// Run state indicator
+	runState := ""
+	if m.Running {
+		if m.AutoRunning {
+			runState = " │ ▶ AUTO"
+		} else if m.InputMode {
+			runState = " │ ⌨ INPUT"
+		} else if m.Interp != nil && m.Interp.Done {
+			runState = " │ ✓ DONE"
+		} else {
+			runState = " │ ⏸ READY"
+		}
+		runState += " [n]step [g]go [p]ause [x]stop"
+	}
+
 	tbContent := fmt.Sprintf(
-		" GRaIL  │  [s]elect [a]dd [c]onnect  │  %s  │  ←↑↓→ pan  │  [q]uit",
-		toolStr,
+		" GRaIL  │  [s]elect [a]dd [c]onnect  │  %s%s  │  [q]uit",
+		toolStr, runState,
 	)
 	layers = append(layers,
 		tealayout.ToolbarLayer(tbContent, m.Width, tbStyle),
@@ -119,11 +135,36 @@ func (m Model) View() tea.View {
 		// Panel background
 		layers = append(layers, tealayout.FillLayer(panelRegion, bgStyle, "panel-bg", 0))
 
-		// Variables (placeholder — will be wired to interpreter later)
-		layers = append(layers, buildVarsPanelLayer(nil, pr.Min.X+1, pr.Min.Y, pw-2, varsH))
+		// Variables (live from interpreter)
+		var vars map[string]any
+		if m.Interp != nil {
+			vars = m.Interp.Vars
+		}
+		layers = append(layers, buildVarsPanelLayer(vars, pr.Min.X+1, pr.Min.Y, pw-2, varsH))
 
-		// Console (placeholder)
-		layers = append(layers, buildConsolePanelLayer(nil, pr.Min.X+1, pr.Min.Y+varsH, pw-2, consoleH))
+		// Console (live from interpreter)
+		var output []string
+		if m.Interp != nil {
+			output = m.Interp.Output
+		}
+		layers = append(layers, buildConsolePanelLayer(output, pr.Min.X+1, pr.Min.Y+varsH, pw-2, consoleH))
+
+		// Input overlay (when waiting for input)
+		if m.InputMode && m.Interp != nil {
+			prompt := m.Interp.InputPrompt
+			inputStr := fmt.Sprintf(" %s %s▌", prompt, m.InputBuf)
+			inputStyle := lipgloss.NewStyle().
+				Foreground(c("#ffcc00")).
+				Background(c("#1a3a2a")).
+				Bold(true)
+			rendered := inputStyle.Render(inputStr)
+			inputLayer := lipgloss.NewLayer(rendered).
+				X(pr.Min.X+1).
+				Y(pr.Min.Y+varsH+consoleH-2).
+				Z(10).
+				ID("input-overlay")
+			layers = append(layers, inputLayer)
+		}
 
 		// Help
 		layers = append(layers, buildHelpPanelLayer(pr.Min.X+1, pr.Min.Y+varsH+consoleH, pw-2, helpH))
