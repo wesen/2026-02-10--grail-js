@@ -475,10 +475,73 @@ Hit a significant dependency issue: Lipgloss v2.0.0-beta.3 is broken against new
 - Whether 2.5ms/frame for the edge buffer is acceptable when combined with node layer rendering and Canvas compositing overhead
 
 ### What should be done in the future
-- Monitor lipgloss#599 for a fix — upgrade to beta.3+ when available
+- ~~Monitor lipgloss#599 for a fix — upgrade to beta.3+ when available~~ **RESOLVED** — see Step 7
 - If Render performance becomes a bottleneck, consider a raw-ANSI fast path (24µs vs 2.5ms per the perf investigation)
 
 ### Code review instructions
 - **Files**: `pkg/cellbuf/buffer.go`, `pkg/cellbuf/render.go`, `pkg/cellbuf/buffer_test.go`
 - **Run**: `make test` (13 tests), `make bench` (2 benchmarks)
 - **Key**: The `Render` function in `render.go` — verify run-length encoding correctness and that the sentinel style flush works for the last run in each row
+
+---
+
+## Step 7: Fix Lipgloss v2 Dependency — Switch to charm.land Module Path
+
+The Charm team has moved their v2 development to `charm.land/*` module paths.
+Switching from `github.com/charmbracelet/lipgloss/v2` to `charm.land/lipgloss/v2@v2-exp`
+resolves the beta.3 x/ansi API breakage that forced us to pin beta.2 in Step 6.
+
+### Prompt Context
+
+**User prompt (verbatim):** User pointed to https://github.com/charmbracelet/lipgloss/issues/599 where a Charm team member posted: "We've moved the latest v2 versions to our charm.land domains... `go get charm.land/lipgloss/v2@v2-exp`". User asked: "Did this not work to fix the lipgloss beta 3 issue?"
+
+**Assistant interpretation:** Re-attempt the charm.land import (which had failed earlier with a module path mismatch) now that the user confirmed it's the official fix.
+
+**Inferred user intent:** Fix the dependency pinning workaround so we use the latest v2 code.
+
+**Commit:** 82d52e2 — "Switch from github.com/charmbracelet/lipgloss/v2 to charm.land/lipgloss/v2@v2-exp"
+
+### What I did
+1. Ran `go get charm.land/lipgloss/v2@v2-exp` — this time it resolved correctly to `v2.0.0-beta.3.0.20260210014823-2f36a2f1ba17`
+2. Updated imports in `pkg/cellbuf/render.go` and `pkg/cellbuf/buffer_test.go` from `github.com/charmbracelet/lipgloss/v2` to `charm.land/lipgloss/v2`
+3. Ran `go mod tidy` — the old `github.com/charmbracelet/lipgloss/v2` dependency was removed entirely
+4. Upgraded transitive deps: `x/ansi` v0.8.0 → v0.11.2, `x/cellbuf` v0.0.13 → v0.0.15, `colorprofile` v0.3.1 → v0.3.3
+5. Verified all 13 tests pass, benchmarks unchanged (~2.7ms realistic, ~3.4ms worst-case)
+
+### Why
+The `github.com/charmbracelet/lipgloss/v2` beta releases (both beta.2 and beta.3) were compiled against `x/ansi` v0.8.0. The `x/ansi` package changed its API (methods like `Italic()`, `Underline()`, `Reverse()` now take `bool` args; `SlowBlink` was removed). Any upgrade of `x/ansi` via transitive deps or Go workspace would break the build.
+
+The `charm.land/lipgloss/v2` module is the new canonical import path for v2 development. The v2-exp branch tip is compiled against `x/ansi` v0.11.2, which matches the new API.
+
+### What worked
+- `charm.land/lipgloss/v2@v2-exp` resolved successfully (it had failed earlier with a module path mismatch — apparently that was fixed server-side between attempts)
+- Clean drop of the old module: `go mod tidy` removed `github.com/charmbracelet/lipgloss/v2` and all its pinned-old transitive deps
+- No code changes needed beyond the import path — the `lipgloss.NewStyle()`, `Style.Render()`, `lipgloss.Color()` APIs are identical
+- Benchmarks are the same — no performance regression from the upgrade
+
+### What didn't work
+- The initial attempt earlier (in Step 6) to use `charm.land/lipgloss/v2@v2-exp` failed with: `module declares its path as: github.com/charmbracelet/lipgloss/v2 but was required as: charm.land/lipgloss/v2`. This was likely a transient issue where the tagged module hadn't fully propagated, or the v2-exp branch was updated between our attempts.
+- Upgrading `clipperhouse/displaywidth` to v0.10.0 then broke `x/cellbuf` v0.0.13 (still compiled against old x/ansi). The dependency chain was: upgrading ANY one dep triggers MVS to pull newer versions of shared deps, which breaks other packages compiled against old versions. The only clean fix was to switch everything to the new `charm.land` module path in one step.
+
+### What I learned
+- **Module path migration is the real fix, not version pinning.** When a library has breaking transitive deps, the maintainers need to release under a new module path that declares the correct dependency versions. That's what `charm.land/lipgloss/v2` does.
+- **Go's MVS (Minimum Version Selection) amplifies breakage.** When module A requires `x/ansi@v0.8.0` and module B requires `x/ansi@v0.11.0`, Go picks v0.11.0 — which may break A. In a workspace with many modules, this cascading version bumping is almost guaranteed to hit incompatibilities during breaking API changes.
+- **`GOWORK=off` is no longer needed** for this specific issue, but is still needed to avoid the workspace pulling in different versions of shared deps from other modules. The `Makefile` still sets it.
+
+### What was tricky to build
+- **The cascading upgrade problem.** When we tried to fix beta.3 by upgrading x/ansi, that broke x/cellbuf. Upgrading x/cellbuf then re-broke lipgloss because Go MVS pulled x/ansi even higher. Every "fix" created a new break. The only clean solution was to use a module that was compiled against the newest versions of everything — which is exactly what `charm.land/lipgloss/v2@v2-exp` provides.
+
+### What warrants a second pair of eyes
+- We're now on a pseudo-version (`v2.0.0-beta.3.0.20260210014823-2f36a2f1ba17`) rather than a tagged release. This is a commit from the v2-exp branch tip as of Feb 10, 2026. It should be stable enough for development but may need updating as new tags are cut.
+- The `charm.land` domain is new — worth verifying it stays the canonical path and doesn't get changed again.
+
+### What should be done in the future
+- When `charm.land/lipgloss/v2` gets a proper tagged release (v2.0.0-beta.4 or v2.0.0), switch to the tag instead of the pseudo-version
+- Update the design docs (01, 02, 03) to reference `charm.land/lipgloss/v2` instead of `github.com/charmbracelet/lipgloss/v2` in import examples
+- When `charm.land/bubbletea/v2` is needed (Step 4: scaffold), use the same `@v2-exp` pattern
+
+### Code review instructions
+- **Commit**: 82d52e2
+- **Files changed**: `pkg/cellbuf/render.go`, `pkg/cellbuf/buffer_test.go`, `go.mod`, `go.sum`
+- **Run**: `make test` (all 13 pass), `make bench` (comparable to before)
+- **Verify**: `grep lipgloss go.mod` shows only `charm.land/lipgloss/v2`, no `github.com/charmbracelet`
