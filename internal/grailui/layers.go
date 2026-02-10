@@ -27,10 +27,10 @@ var bufStyles = map[cellbuf.StyleKey]lipgloss.Style{
 	styleEdgeActive: lipgloss.NewStyle().Foreground(c("#ffcc00")).Background(c("#080e0b")).Bold(true),
 }
 
-// buildEdgeCanvasLayer renders the grid + edge lines into a cellbuf and
-// returns it as a single background Layer at Z=0.
+// buildEdgeCanvasLayer renders the grid + edge lines + connect preview into
+// a cellbuf and returns it as a single background Layer at Z=0.
 func buildEdgeCanvasLayer(g *FlowGraph, camX, camY int, viewport image.Rectangle,
-	execID *int) *lipgloss.Layer {
+	execID *int, connectFromID *int, mouseX, mouseY int) *lipgloss.Layer {
 
 	w := viewport.Dx()
 	h := viewport.Dy()
@@ -72,6 +72,19 @@ func buildEdgeCanvasLayer(g *FlowGraph, camX, camY int, viewport image.Rectangle
 		}
 
 		drawutil.DrawArrowLine(buf, bx1, by1, bx2, by2, es, es)
+	}
+
+	// Connect preview: dashed line from source node center to mouse cursor
+	if connectFromID != nil {
+		node := g.Node(*connectFromID)
+		if node != nil {
+			center := graphmodel.CenterOf(node.Data)
+			sx := center.X - camX
+			sy := center.Y - camY
+			tx := mouseX - viewport.Min.X
+			ty := mouseY - viewport.Min.Y
+			drawutil.DrawDashedLine(buf, sx, sy, tx, ty, styleEdgeActive)
+		}
 	}
 
 	rendered := buf.Render(bufStyles)
@@ -205,54 +218,6 @@ func buildNodeLayers(g *FlowGraph, camX, camY int, viewport image.Rectangle,
 	}
 
 	return layers
-}
-
-// buildConnectPreviewLayer draws a dashed line from the connect source node
-// center to the current mouse position. Returns nil if not in connect mode.
-func buildConnectPreviewLayer(g *FlowGraph, connectFromID *int, mouseX, mouseY, camX, camY int,
-	viewport image.Rectangle) *lipgloss.Layer {
-
-	if connectFromID == nil {
-		return nil
-	}
-	node := g.Node(*connectFromID)
-	if node == nil {
-		return nil
-	}
-
-	w := viewport.Dx()
-	h := viewport.Dy()
-	if w <= 0 || h <= 0 {
-		return nil
-	}
-
-	connStyle := cellbuf.StyleKey(10)
-	connStyles := map[cellbuf.StyleKey]lipgloss.Style{
-		connStyle: lipgloss.NewStyle().Foreground(c("#00ffc8")).Background(c("#080e0b")),
-	}
-
-	buf := cellbuf.New(w, h, styleBG)
-
-	// Source: node center in buffer coords
-	center := graphmodel.CenterOf(node.Data)
-	sx := center.X - camX
-	sy := center.Y - camY
-
-	// Target: mouse in buffer coords
-	tx := mouseX - viewport.Min.X
-	ty := mouseY - viewport.Min.Y
-
-	drawutil.DrawDashedLine(buf, sx, sy, tx, ty, connStyle)
-
-	// Merge connStyles into bufStyles for rendering
-	merged := make(map[cellbuf.StyleKey]lipgloss.Style, len(bufStyles)+1)
-	for k, v := range bufStyles {
-		merged[k] = v
-	}
-	merged[connStyle] = connStyles[connStyle]
-
-	rendered := buf.Render(merged)
-	return lipgloss.NewLayer(rendered).X(viewport.Min.X).Y(viewport.Min.Y).Z(5).ID("connect-preview")
 }
 
 // nodeCenter returns the screen-space center of a node.

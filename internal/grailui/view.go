@@ -87,9 +87,10 @@ func (m Model) View() tea.View {
 		tealayout.FooterLayer(ftContent, m.Width, m.Height-1, ftStyle),
 	)
 
-	// Edge canvas layer (grid + edge lines at Z=0)
+	// Edge canvas layer (grid + edge lines + connect preview at Z=0)
 	layers = append(layers,
-		buildEdgeCanvasLayer(m.Graph, m.CamX, m.CamY, canvasRegion.Rect, m.ExecID),
+		buildEdgeCanvasLayer(m.Graph, m.CamX, m.CamY, canvasRegion.Rect,
+			m.ExecID, m.ConnectFromID, m.MouseX, m.MouseY),
 	)
 
 	// Node layers (Z=2, on top of edges)
@@ -99,12 +100,6 @@ func (m Model) View() tea.View {
 	// Edge labels (Z=3, on top of nodes)
 	labelLayers := buildEdgeLabelLayers(m.Graph, m.CamX, m.CamY, canvasRegion.Rect)
 	layers = append(layers, labelLayers...)
-
-	// Connect preview (Z=5, dashed line from source to mouse)
-	if preview := buildConnectPreviewLayer(m.Graph, m.ConnectFromID,
-		m.MouseX, m.MouseY, m.CamX, m.CamY, canvasRegion.Rect); preview != nil {
-		layers = append(layers, preview)
-	}
 
 	// Side panel
 	pr := panelRegion.Rect
