@@ -3,7 +3,7 @@ package cellbuf
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Render converts the buffer into a styled string. The caller provides
