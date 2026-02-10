@@ -2,11 +2,11 @@
 
 ## TODO
 
-- [ ] Add tasks here
+- [x] Add tasks here
 
-- [ ] Define FlowNodeData implementing graphmodel.Spatial
-- [ ] Define FlowEdgeData with Label string
-- [ ] Implement buildNodeLayer with border/color per node type
-- [ ] Wire View(): toolbar + node layers + footer using tealayout
-- [ ] Implement camera panning with arrow keys
-- [ ] Implement visibility culling for off-screen nodes
+- [x] Define FlowNodeData implementing graphmodel.Spatial
+- [x] Define FlowEdgeData with Label string
+- [x] Implement buildNodeLayer with border/color per node type
+- [x] Wire View(): toolbar + node layers + footer using tealayout
+- [x] Implement camera panning with arrow keys
+- [x] Implement visibility culling for off-screen nodes
