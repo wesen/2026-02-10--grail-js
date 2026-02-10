@@ -355,3 +355,66 @@ func (s Style) Render(strs ...string) string
 "Render applies the defined style formatting to a given string."
 
 The performance difference comes from `StyleRanges` needing to parse/preserve existing ANSI in the base string, while `Render` on a plain substring just wraps it.
+
+---
+
+## Step 5: Component-by-Component Build Plan
+
+The user asked how to build the Go/Bubbletea port incrementally, with reusable components that can serve other projects. This required decomposing the ~1100-line monolith into packages with clear boundaries, ordering them by dependency, and ensuring every step produces a running program with visible progress.
+
+The key design decision was identifying four genuinely reusable packages (`cellbuf`, `drawutil`, `graphmodel`, `tealayout`) vs two GRaIL-specific packages (`flowinterp`, `grailui`). The build order follows the dependency graph: pure libraries first (no UI), then scaffold, then visual layers, then interaction, then interpreter.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Ok, now if we were to build a grails version bit bubbletea and lipgloss v2, because it's so complex, we would like to build it up component by component, especially so we can reuse them in other contexts. How would you approach this, step by step ?"
+
+**Assistant interpretation:** Design a build plan that decomposes GRaIL into reusable packages, ordered by dependency, with each step producing something testable.
+
+**Inferred user intent:** Get a concrete implementation roadmap where (a) each step is independently validatable, (b) the reusable pieces are cleanly separated for use in future projects, and (c) architectural risks are caught early.
+
+**Commit (code):** (pending — doc only, no code changes)
+
+### What I did
+- Analyzed the dependency graph of all GRaIL subsystems
+- Identified 4 reusable packages + 2 app-specific packages
+- Designed 12 build steps ordered by dependency
+- Defined package APIs with Go type signatures
+- Placed 4 risk checkpoints at critical junctures
+- Estimated effort: ~1180 lines, ~7.5 hours total
+
+### Why
+- A monolithic build risks discovering architectural problems late (e.g., Canvas.Hit coordinate mismatch)
+- Reusable packages (`cellbuf`, `drawutil`, `graphmodel`, `tealayout`) solve problems common to any terminal-based spatial editor
+- Each step from 4 onward produces a visible, runnable program
+
+### What worked
+- The dependency graph has a clean layering: pure math → data model → UI scaffold → visual layers → interaction → interpreter → integration
+- The `graphmodel` package naturally uses Go generics (`Graph[N Spatial, E any]`) to avoid coupling to GRaIL node types
+- The `tealayout.LayoutBuilder` declarative API (`TopFixed → RightFixed → Remaining → Build`) maps cleanly to GRaIL's layout needs
+
+### What didn't work
+- N/A — planning only, no implementation yet
+
+### What I learned
+- The package boundary test ("could another app use this?") cleanly separates infrastructure from application logic
+- The interpreter does NOT belong in `pkg/` — its node-type dispatch is GRaIL-specific, and making it generic would require a plugin architecture that isn't worth the complexity
+- Step 4 (scaffold) is the most important step despite being the smallest: it validates that the entire v2 beta stack works before investing further
+
+### What was tricky to build
+- **Package boundary for `graphmodel`**: The `Spatial` interface (`Pos()`, `Size()`, `Center()`, `Bounds()`) is the key abstraction that decouples the graph from GRaIL node types. Finding the right interface — not too specific (would couple to GRaIL) and not too abstract (would be useless) — required iterating on what operations the graph actually needs. `image.Point` and `image.Rectangle` from the standard library provide the right vocabulary types.
+- **Step ordering around mouse interaction**: Step 9 (mouse) depends on both Step 6 (nodes) and Step 7 (edges) because selection highlighting and connect preview need visual feedback. But it also depends on the Canvas.Hit coordinate validation (Checkpoint B), which should happen before committing to the hit-testing approach. Placed Checkpoint B explicitly before Step 9.
+
+### What warrants a second pair of eyes
+- The `graphmodel.Graph` generic API — whether `Graph[N Spatial, E any]` is the right level of genericity, or whether simpler concrete types would be more practical
+- Whether `tealayout.LayoutBuilder` is over-engineered for what's essentially 5 lines of arithmetic — might be simpler as a plain function
+- The time estimates are optimistic (assume no v2 beta surprises)
+
+### What should be done in the future
+- Execute the 12-step plan
+- After Step 4 (scaffold), evaluate whether the v2 beta stack is stable enough to continue
+- After Step 9 (mouse), evaluate whether Canvas.Hit performance is acceptable with ~50+ layers
+
+### Code review instructions
+- **Document**: `design-doc/03-component-build-plan.md`
+- **Key sections**: §2 (Package Map), §3 (Build Steps), §7 (Risk Checkpoints)
+- **Validate**: Check that the dependency graph in §3 has no cycles and each step's "depends on" list is correct
