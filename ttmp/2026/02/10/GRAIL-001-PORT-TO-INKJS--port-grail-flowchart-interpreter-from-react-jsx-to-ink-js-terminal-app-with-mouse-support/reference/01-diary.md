@@ -650,3 +650,59 @@ Continuing from the same "close and move on" prompt. GRAIL-003 was clean, GRAIL-
 - **Files**: `pkg/graphmodel/spatial.go`, `pkg/graphmodel/graph.go`, `pkg/graphmodel/graph_test.go`
 - **Run**: `make test` (51 tests across 3 packages)
 - **Key**: `HitTest` reverse iteration and `RemoveNode` edge cleanup
+
+---
+
+## Step 10: Fix Edge Rendering — Per-Point Line Characters
+
+User pointed out that diagonal edges looked ugly (rows of `\\\\`) and that edge lines were overwriting node borders. Reviewed the Python reference in `grail.py:410-420` and found the root cause: our `DrawLine`/`DrawArrowLine`/`DrawDashedLine` were using a single `LineChar(dx, dy)` for the entire line based on the overall direction, but the Python version computes the character **per point** based on the direction to the *next* point.
+
+Also fixed `.gitignore` (`cellbuf-demo` was matching the `cmd/cellbuf-demo/` directory, blocking commits). Updated the visual demo to use all 3 packages together (graphmodel stores the flowchart, drawutil renders edges, cellbuf outputs).
+
+### Prompt Context
+
+**User prompt (verbatim):** "Lines should not overwrite the borders, except for arrow ports, it's ugly. Also, should END be closed?" → then "END should be closed, not closer, on the right, I think." → then "what were the textual primitives used for the lines, maybe the textual algorithms would help?"
+
+**Assistant interpretation:** Review how the Python reference draws edges and apply the same per-segment technique.
+
+**Inferred user intent:** Fix visual quality of edge rendering to match the Python version.
+
+**Commit:** 09698b6 — "Fix edge rendering: per-point line characters instead of global direction"
+
+### What I did
+- Added `pointChar(pts []image.Point, i int) rune` helper that looks at next/prev point to determine line character
+- Rewrote `DrawLine`, `DrawArrowLine`, `DrawDashedLine` to call `pointChar` per point instead of one `LineChar` for the whole line
+- Updated `DrawArrowLine` arrowhead to use final segment direction (last point - second-to-last) instead of overall direction
+- Fixed `.gitignore`: `/cellbuf-demo` (root binary only) instead of `cellbuf-demo` (matched cmd/ directory too)
+- Rewrote demo to build flowchart in a `graphmodel.Graph`, render edges via `drawutil.EdgeExit` + `DrawArrowLine`, and show `HitTest` results
+
+### Why
+- Python `grail.py:410-420` computes `_lch(pts[i+1][0] - px, pts[i+1][1] - py)` per point — this produces correct `│`→`\`→`─` transitions at direction changes in the Bresenham path
+- Our single-character approach produced `\\\\\\\\` runs because the overall direction was diagonal even though individual segments alternate between horizontal and vertical steps
+
+### What worked
+- Per-point character selection matches Python output quality
+- All 51 tests still pass (the tests check character types for horizontal/vertical lines, which are unaffected)
+- Node-on-top drawing (edges first, nodes second) correctly covers edge endpoints on borders — same as Python
+- END box was actually closed correctly all along; the user's concern was resolved once edge rendering cleaned up
+
+### What didn't work
+- Initial assumption that EdgeExit needed to return 1 cell outside the border was wrong — the Python reference returns ON the border and relies on node-on-top overwrite, which works fine
+
+### What I learned
+- **Per-point vs per-line character selection is critical for Bresenham.** A Bresenham line from (0,0) to (20,5) takes many horizontal steps with occasional vertical steps. Using the overall direction gives `\` for every cell, but per-point gives `─` for horizontal steps and `\` only at the diagonal transitions.
+- **Always check the reference implementation before "fixing" things.** The Python code had already solved this problem — reading 10 lines of `grail.py` would have prevented the bug in the first place.
+
+### What was tricky to build
+- Nothing — once the Python reference was consulted, the fix was obvious and mechanical.
+
+### What warrants a second pair of eyes
+- The `pointChar` helper falls back to prev-point direction for the last point. For a single-point line (zero length), it returns `│` by default (dx=0, dy=0). This edge case might not be ideal.
+
+### What should be done in the future
+- Consider orthogonal-only routing (horizontal segments + vertical segments) for cleaner flowchart aesthetics — diagonal Bresenham lines are technically correct but visually noisy for a flowchart editor
+
+### Code review instructions
+- **Files**: `pkg/drawutil/draw.go`, `cmd/cellbuf-demo/main.go`
+- **Run**: `make test` (51 tests), `GOWORK=off go run ./cmd/cellbuf-demo/` (visual)
+- **Compare**: Python `grail.py:410-420` vs Go `drawutil.pointChar` — should produce equivalent characters
