@@ -1,7 +1,7 @@
 ---
 Title: Flow interpreter — Goja JS runtime step-through engine
 Ticket: GRAIL-011-INTERPRETER
-Status: active
+Status: complete
 Topics:
     - interpreter
     - go
@@ -11,10 +11,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.839798659-05:00
+LastUpdated: 2026-02-10T17:43:33.477707269-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # Flow interpreter — Goja JS runtime step-through engine
 
