@@ -1,7 +1,7 @@
 ---
 Title: Edge rendering — MiniBuffer lines, arrows, and labels
 Ticket: GRAIL-008-EDGES
-Status: active
+Status: complete
 Topics:
     - rendering
     - cellbuf
@@ -13,10 +13,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.571313735-05:00
+LastUpdated: 2026-02-10T17:22:16.020100944-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # Edge rendering — MiniBuffer lines, arrows, and labels
 

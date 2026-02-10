@@ -34,14 +34,16 @@ func (m Model) View() tea.View {
 		return tea.NewView("")
 	}
 
-	// Layout: toolbar(1) + canvas(remaining)  + footer(1)
+	// Layout: toolbar(1) + footer(1) + panel(panelWidth) + canvas(remaining)
 	layout := tealayout.NewLayoutBuilder(m.Width, m.Height).
 		TopFixed("toolbar", 1).
 		BottomFixed("footer", 1).
+		RightFixed("panel", panelWidth).
 		Remaining("canvas").
 		Build()
 
 	canvasRegion := layout.Get("canvas")
+	panelRegion := layout.Get("panel")
 
 	// Layers
 	var layers []*lipgloss.Layer
@@ -91,6 +93,34 @@ func (m Model) View() tea.View {
 	// Edge labels (Z=3, on top of nodes)
 	labelLayers := buildEdgeLabelLayers(m.Graph, m.CamX, m.CamY, canvasRegion.Rect)
 	layers = append(layers, labelLayers...)
+
+	// Side panel
+	pr := panelRegion.Rect
+	pw := pr.Dx()
+	ph := pr.Dy()
+	if pw > 0 && ph > 0 {
+		varsH := 6
+		helpH := 8
+		consoleH := ph - varsH - helpH
+		if consoleH < 3 {
+			consoleH = 3
+		}
+
+		// Separator
+		layers = append(layers, buildSeparatorLayer(pr.Min.X-1, pr.Min.Y, ph))
+
+		// Panel background
+		layers = append(layers, tealayout.FillLayer(panelRegion, bgStyle, "panel-bg", 0))
+
+		// Variables (placeholder — will be wired to interpreter later)
+		layers = append(layers, buildVarsPanelLayer(nil, pr.Min.X+1, pr.Min.Y, pw-2, varsH))
+
+		// Console (placeholder)
+		layers = append(layers, buildConsolePanelLayer(nil, pr.Min.X+1, pr.Min.Y+varsH, pw-2, consoleH))
+
+		// Help
+		layers = append(layers, buildHelpPanelLayer(pr.Min.X+1, pr.Min.Y+varsH+consoleH, pw-2, helpH))
+	}
 
 	// Compose
 	comp := lipgloss.NewCompositor(layers...)

@@ -854,3 +854,41 @@ Continuing sequential build. User confirmed scaffold mouse tracking works, asked
 - **Files**: `internal/grailui/*.go`, `cmd/grail/main.go`
 - **Run**: `GOWORK=off go run ./cmd/grail/` — 7 nodes visible, arrow keys pan, q quits
 - **Key**: `buildNodeLayers` in `layers.go` — the camera→screen coordinate transform and visibility culling
+
+---
+
+## Step 14: Implement GRAIL-008 — Edge Rendering
+
+Complete flowchart now visible. The cellbuf MiniBuffer approach works exactly as designed: grid dots + Bresenham edge lines rendered into a `cellbuf.Buffer`, converted to a string, wrapped as a Z=0 Layer. Nodes at Z=2 cleanly occlude the edge lines underneath. Edge labels ("Y", "N") as Z=3 layers at midpoints.
+
+### Prompt Context
+
+Continuing sequential build. No issues.
+
+**Commit:** 20c345d
+
+### What I did
+- Added `buildEdgeCanvasLayer` to `layers.go`: creates cellbuf, draws grid + all edge lines, renders as Z=0 Layer
+- Added `buildEdgeLabelLayers`: edge labels at midpoints, horizontal/vertical offset based on edge direction
+- Added cellbuf style keys and style map (`bufStyles`) to `layers.go`
+- Wired both into `view.go` between background fills and node layers
+
+### What worked
+- All 7 edges render with correct Bresenham lines and per-point characters
+- Arrowheads point in correct directions
+- "Y" and "N" labels positioned at edge midpoints
+- Z-ordering correct: edges(Z=0) → nodes(Z=2) → tags/labels(Z=3)
+- Grid dots visible in background between nodes
+- Camera panning moves edges and grid together with nodes
+
+### What didn't work
+- Nothing — clean integration of cellbuf + drawutil with the Compositor
+
+### What I learned
+- The MiniBuffer rendering cost is amortized across all edges and the grid — one `buf.Render()` call produces one Layer. This is much more efficient than individual layers per edge segment.
+- Z-ordering between cellbuf (rasterized into a single string) and Lipgloss layers works correctly — the Compositor draws the cellbuf string first, then node layers on top.
+
+### Code review instructions
+- **Files**: `internal/grailui/layers.go` (new functions), `internal/grailui/view.go` (wiring)
+- **Run**: `GOWORK=off go run ./cmd/grail/` — complete flowchart with edges, labels, grid
+- **Key**: `buildEdgeCanvasLayer` — the cellbuf→Layer pipeline
