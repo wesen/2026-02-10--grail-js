@@ -79,9 +79,18 @@ func (m Model) View() tea.View {
 		tealayout.FooterLayer(ftContent, m.Width, m.Height-1, ftStyle),
 	)
 
-	// Node layers
+	// Edge canvas layer (grid + edge lines at Z=0)
+	layers = append(layers,
+		buildEdgeCanvasLayer(m.Graph, m.CamX, m.CamY, canvasRegion.Rect, m.ExecID),
+	)
+
+	// Node layers (Z=2, on top of edges)
 	nodeLayers := buildNodeLayers(m.Graph, m.CamX, m.CamY, canvasRegion.Rect, m.SelectedID, m.ExecID)
 	layers = append(layers, nodeLayers...)
+
+	// Edge labels (Z=3, on top of nodes)
+	labelLayers := buildEdgeLabelLayers(m.Graph, m.CamX, m.CamY, canvasRegion.Rect)
+	layers = append(layers, labelLayers...)
 
 	// Compose
 	comp := lipgloss.NewCompositor(layers...)
