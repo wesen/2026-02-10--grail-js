@@ -13,3 +13,8 @@ Complete port of GRaIL from React/JSX to Textual Python TUI with mouse support, 
 
 - /home/manuel/code/wesen/corporate-headquarters/2026-02-10--grail-js/grail.py — Full implementation
 
+
+## 2026-02-10
+
+Added deep Bubbletea port analysis design doc with pseudocode for all subsystems
+
