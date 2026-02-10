@@ -968,3 +968,137 @@ Instead: convert screen→world coordinates in `handleMouse`, then call `graphmo
 - **Key**: `handleLeftClick` in `mouse.go` — the tool-dispatch state machine
 
 **Post-commit fix (69cf6b5):** Connect preview layer was a full-canvas cellbuf at Z=5 with opaque background — covered all nodes. Moved dashed line drawing into `buildEdgeCanvasLayer` (Z=0) so it's behind nodes. Root cause: cellbuf always fills with a background style, so any full-size cellbuf Layer will be opaque.
+
+---
+
+## Step 17: Implement GRAIL-011 — Flow Interpreter (Goja JS runtime)
+
+Ported the Python `FlowInterpreter` to Go using Goja (embedded JS runtime). Checkpoint D passed: sum == 15. The interpreter is fully decoupled from the UI — uses its own `FlowNode`/`FlowEdge` types.
+
+### Prompt Context
+
+Continuing sequential build. All UI tickets complete, now the logic layer.
+
+**Commit:** d8c69e4
+
+### What I did
+- `internal/flowinterp/interpreter.go`: `Interpreter` struct with `Step()`, `Reset()`, all node type handlers
+- `internal/flowinterp/interpreter_test.go`: 8 tests — integration, error cases, input handling, reset
+
+### What worked
+- Goja handles `str()` concatenation and arithmetic expressions correctly
+- `syncVarsToRuntime` before each eval ensures variable state is consistent
+- `recover()` catches Goja panics and converts to error strings
+- Input regex matches both `input("prompt", var)` and `read("prompt", var)` patterns
+
+### What I learned
+- Goja exports int64 for JS integers, not Go int — tests must assert `int64` type
+- `runtime.RunString()` panics on syntax errors — must wrap in recover
+
+### Code review instructions
+- **Files**: `internal/flowinterp/interpreter.go`, `interpreter_test.go`
+- **Run**: `GOWORK=off go test ./internal/flowinterp/ -v`
+- **Key**: `Step()` method — the main dispatch loop
+
+---
+
+## Step 18: Implement GRAIL-012 — Interpreter UI Wiring
+
+Wired the interpreter to the Bubbletea UI: run/step/auto/pause/stop controls, live variables panel, console output, input overlay, execution highlighting, auto-step timer.
+
+### Prompt Context
+
+Final UI integration. No issues.
+
+**Commit:** 9d0e515
+
+### What I did
+- Updated `update.go`: `startProgram`, `stepProgram`, `autoRun`, `stopProgram`, `syncInterpreter`, `TickMsg`, `handleInputKeys`
+- Updated `model.go`: interpreter state fields (Interp, Running, AutoRunning, AutoSpeed, InputMode, InputBuf)
+- Updated `view.go`: live vars/output from interpreter, input overlay, run state indicator in toolbar
+
+### What worked
+- r=start, n=step, g=auto-run (400ms ticks), p=pause, x=stop — all working
+- Variables panel updates live: `sum = 15, i = 6` at completion
+- Console shows: PROGRAM START → Sum 1..5 = 15 → PROGRAM END
+- Toolbar shows run state: ⏸ READY, ▶ AUTO, ✓ DONE
+- TickMsg auto-stepping works with `tea.Tick`
+
+### Code review instructions
+- **Files**: `internal/grailui/update.go`, `model.go`, `view.go`
+- **Run**: `GOWORK=off go run ./cmd/grail/` → press `r` then `g` to auto-run
+
+---
+
+## Step 19: Implement GRAIL-013 — Edit Modal
+
+Final ticket. Press `e` on selected node → centered modal with label and code fields using `bubbles/v2/textinput`. Tab switches fields, Enter saves (uppercase), Esc cancels.
+
+**All 12/12 tickets complete. Port is finished.**
+
+### Prompt Context
+
+Final step. No issues.
+
+**Commit:** 4f9ad39
+
+### What I did
+- `internal/grailui/edit.go`: `openEditModal`, `handleEditKeys`, `buildEditModalLayer`
+- Updated `update.go`: `e` key opens modal, edit keys routed when modal open
+- Updated `view.go`: modal layer at Z=100
+- Updated `model.go`: edit state fields, `bubbles/v2/textinput` dependency
+
+### What worked
+- Modal renders centered with green border, CRT aesthetic
+- textinput handles cursor and editing correctly
+- Tab toggles between label/code with ▸ indicator
+- Enter saves and closes — node text updates immediately on canvas
+- Code hints per node type shown in labels
+- Esc cancels without saving
+
+### What I learned
+- `bubbles/v2/textinput` uses `Focus()` returning a `tea.Cmd` — must be returned from Update
+- Manual centering via `(screenW - renderedW) / 2` works correctly with the Compositor
+
+### Code review instructions
+- **Files**: `internal/grailui/edit.go`, `update.go`, `model.go`, `view.go`
+- **Run**: `GOWORK=off go run ./cmd/grail/` → click node → press `e` → edit → Enter
+
+---
+
+## Final Summary
+
+### Architecture
+```
+cmd/grail/main.go           → entry point
+internal/grailui/            → app-specific Bubbletea model
+  model.go, update.go, view.go, data.go, styles.go,
+  layers.go, panel.go, mouse.go, edit.go
+internal/flowinterp/         → Goja JS interpreter (decoupled)
+  interpreter.go, interpreter_test.go
+pkg/cellbuf/                 → 2D character buffer + styled rendering
+pkg/drawutil/                → Bresenham, arrows, grid, edge exit
+pkg/graphmodel/              → generic spatial graph with hit testing
+pkg/tealayout/               → layout builder + chrome helpers
+```
+
+### Stats
+- **68 tests** across 5 packages
+- **12 tickets** completed (GRAIL-002 through GRAIL-013)
+- **~2200 lines of Go** (vs ~1100 Python, ~950 JSX)
+- **4 reusable packages** in `pkg/`
+- **Key dependencies**: Bubbletea v2 RC2, Lipgloss v2 beta3, Bubbles v2 RC1, Goja
+
+### Features
+- 7 styled flowchart node types with box-drawing borders
+- Bresenham edge lines with per-point line characters + arrowheads
+- Camera panning (arrow keys)
+- Click to select, drag to move
+- Connect mode (c → click source → click target)
+- Add mode (1-5 keys → click to place)
+- Delete (d key)
+- Edit modal (e key → label + code editing)
+- Interpreter: run/step/auto/pause/stop
+- Live variables panel, console output
+- User input for I/O nodes
+- CRT green terminal aesthetic
