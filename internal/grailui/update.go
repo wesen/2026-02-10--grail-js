@@ -36,6 +36,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Height = msg.Height
 
 	case tea.KeyMsg:
+		if m.EditOpen {
+			return m.handleEditKeys(msg)
+		}
 		if m.InputMode {
 			return m.handleInputKeys(msg)
 		}
@@ -111,6 +114,12 @@ func (m Model) handleKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ConnectFromID = nil
 		m.SelectedID = nil
 		m.CurrentTool = ToolSelect
+
+	// Edit modal
+	case "e":
+		if m.SelectedID != nil {
+			return m.openEditModal()
+		}
 
 	// Interpreter controls
 	case "r":

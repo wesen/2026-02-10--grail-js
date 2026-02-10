@@ -5,7 +5,9 @@ go 1.25.7
 require charm.land/lipgloss/v2 v2.0.0-beta.3.0.20260210014823-2f36a2f1ba17
 
 require (
+	charm.land/bubbles/v2 v2.0.0-rc.1 // indirect
 	charm.land/bubbletea/v2 v2.0.0-rc.2.0.20260210130705-b3661ce3d63f // indirect
+	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260205113103-524a6607adb8 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect

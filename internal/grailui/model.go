@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/bubbles/v2/textinput"
 	"github.com/wesen/grail/internal/flowinterp"
 )
 
@@ -43,6 +44,13 @@ type Model struct {
 	AutoSpeed   time.Duration
 	InputMode   bool   // waiting for user input
 	InputBuf    string // typed input text
+
+	// Edit modal state
+	EditOpen    bool
+	EditNodeID  int
+	EditLabel   textinput.Model
+	EditCode    textinput.Model
+	EditFocus   int // 0=label, 1=code
 }
 
 // NewModel creates the initial model with the demo flowchart.

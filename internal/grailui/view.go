@@ -170,6 +170,13 @@ func (m Model) View() tea.View {
 		layers = append(layers, buildHelpPanelLayer(pr.Min.X+1, pr.Min.Y+varsH+consoleH, pw-2, helpH))
 	}
 
+	// Edit modal (Z=100, on top of everything)
+	if m.EditOpen {
+		if modal := buildEditModalLayer(m, m.Width, m.Height); modal != nil {
+			layers = append(layers, modal)
+		}
+	}
+
 	// Compose
 	comp := lipgloss.NewCompositor(layers...)
 	canvas := lipgloss.NewCanvas(m.Width, m.Height)
