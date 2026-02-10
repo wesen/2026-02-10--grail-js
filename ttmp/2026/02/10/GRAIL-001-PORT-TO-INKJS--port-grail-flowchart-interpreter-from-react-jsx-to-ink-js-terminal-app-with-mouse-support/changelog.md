@@ -28,3 +28,8 @@ Major addendum to Bubbletea port analysis: Lipgloss v2 Canvas/Layer compositing 
 
 Added complete Lipgloss v2 Canvas/Layer architecture document (doc 02) — supersedes CellBuffer approach for rendering
 
+
+## 2026-02-10
+
+Diary Steps 2-4: retroactive entries for Bubbletea analysis, Lipgloss v2 architecture, and StyleRanges benchmarks
+

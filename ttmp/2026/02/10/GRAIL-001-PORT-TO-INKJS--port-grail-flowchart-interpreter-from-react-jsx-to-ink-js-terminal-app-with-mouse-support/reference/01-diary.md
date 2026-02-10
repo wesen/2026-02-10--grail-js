@@ -8,12 +8,22 @@ topics:
   - cli
   - terminal-ui
   - inkjs
+  - bubbletea
+  - lipgloss-v2
   - port
 related_files:
   - path: /home/manuel/code/wesen/corporate-headquarters/2026-02-10--grail-js/grail.py
     note: "Complete Textual port of the GRaIL flowchart editor+interpreter (commit b3e4646)"
   - path: /home/manuel/code/wesen/corporate-headquarters/2026-02-10--grail-js/reference.jsx
     note: "Original React/JSX source — source of truth for feature parity"
+  - path: /home/manuel/code/wesen/corporate-headquarters/2026-02-10--grail-js/ttmp/2026/02/10/GRAIL-001-PORT-TO-INKJS--port-grail-flowchart-interpreter-from-react-jsx-to-ink-js-terminal-app-with-mouse-support/design-doc/01-bubbletea-port-analysis.md
+    note: "Bubbletea v1 CellBuffer port analysis (commit 9d75680, addendum a0b502d)"
+  - path: /home/manuel/code/wesen/corporate-headquarters/2026-02-10--grail-js/ttmp/2026/02/10/GRAIL-001-PORT-TO-INKJS--port-grail-flowchart-interpreter-from-react-jsx-to-ink-js-terminal-app-with-mouse-support/design-doc/02-bubbletea-v2-canvas-architecture.md
+    note: "Lipgloss v2 Canvas/Layer architecture doc — complete Go port blueprint (commit c29b5c0)"
+  - path: /home/manuel/code/wesen/corporate-headquarters/2026-02-10--grail-js/ttmp/2026/02/10/GRAIL-001-PORT-TO-INKJS--port-grail-flowchart-interpreter-from-react-jsx-to-ink-js-terminal-app-with-mouse-support/scripts/bench-lipgloss-percell-vs-ranges.go
+    note: "Benchmark: per-cell Render vs StyleRanges vs raw ANSI"
+  - path: /home/manuel/code/wesen/corporate-headquarters/2026-02-10--grail-js/ttmp/2026/02/10/GRAIL-001-PORT-TO-INKJS--port-grail-flowchart-interpreter-from-react-jsx-to-ink-js-terminal-app-with-mouse-support/scripts/bench-lipgloss-realistic-buffer.go
+    note: "Benchmark: realistic edge buffer with StyleRanges vs Render-per-run"
 ---
 
 # Diary
@@ -111,3 +121,237 @@ After evaluating Textual (Python), Bubbletea (Go), Ratatui (Rust), and terminal-
 | Terminal | `╭─╮│╰─╯` | Bright green `#44ff88` | `[T]` |
 | I/O | `┌─┐│└─┘` | Gold `#ddaa44` | `[IO]` |
 | Connector | `┌─┐│└─┘` | Dim green `#1a6a4a` | (none, shows `○`) |
+
+---
+
+## Step 2: Bubbletea v1 Port Analysis (CellBuffer Approach)
+
+The user asked for a deep analysis of porting GRaIL from Textual to Go/Bubbletea. This was a pure design-doc exercise — no code was written. The focus was on understanding what Textual gives you for free (CSS layout, widget tree, `render_line`, `ModalScreen`, focus routing) and what you'd have to build from scratch in Bubbletea's `View() string` model.
+
+The analysis identified three genuinely hard problems: (1) building a CellBuffer with per-cell styling and run-length-encoded ANSI output, (2) modal overlays requiring ANSI string splicing, and (3) keeping manual hit-testing math in sync with rendering. Estimated effort: ~1500 lines of Go vs ~700 Python.
+
+### Prompt Context
+
+**User prompt (verbatim):** "The user asked for a detailed analysis document about porting GRaIL (a Textual/Python TUI application for flowchart/graph visualization and interaction) to Go using the Bubbletea framework. They wanted deep analysis of rendering differences and pseudocode for all system components."
+
+**Assistant interpretation:** Produce a comprehensive design document covering architecture, rendering, mouse handling, and pseudocode for all subsystems of a Go/Bubbletea port.
+
+**Inferred user intent:** Understand the full scope and difficulty of a Go port before committing to implementation.
+
+**Commit (code):** 9d75680 — "Add Bubbletea port analysis design doc with pseudocode"
+
+### What I did
+- Researched Bubbletea docs: `Model` interface, `MouseMsg`/`MouseEvent`, `Cmd` pattern
+- Researched Lipgloss v1: `Style`, `JoinHorizontal`/`JoinVertical`, `Place`, border types
+- Wrote `01-bubbletea-port-analysis.md` (~1130 lines) covering:
+  - Architecture mapping (Textual widget tree → Elm Model/Update/View)
+  - CellBuffer design with run-length encoded ANSI rendering
+  - Drawing primitives (Bresenham, edge exit, node boxes)
+  - Mouse coordinate translation (absolute → canvas-relative → world)
+  - Modal overlay problem (ANSI splicing)
+  - Interpreter port (Goja JS runtime recommendation)
+  - Effort breakdown table
+
+### Why
+- The user wanted to evaluate feasibility and understand the "framework tax" before writing Go code
+- Bubbletea's single-string `View()` model is fundamentally different from Textual's widget tree — the gap needed documenting
+
+### What worked
+- The CellBuffer approach is well-understood (it's what ncurses does)
+- Pseudocode for all subsystems makes the port mechanically straightforward
+- Identifying the three hard problems (CellBuffer, ANSI splicing, hit-test sync) focused attention correctly
+
+### What didn't work
+- N/A — design doc only, no implementation
+
+### What I learned
+- Bubbletea's `View()` returns ONE string for the entire terminal — there is no widget-level rendering
+- Mouse events in Bubbletea give absolute terminal coordinates (0,0 = top-left) — you must manually subtract layout offsets
+- `tea.WithMouseAllMotion()` floods Update with events on every cursor move (needed for connect preview)
+
+### What was tricky to build
+- **The ANSI splicing problem (§6.3)**: Overlaying a modal on existing styled content requires inserting text at a visual column position within an ANSI-escaped string. Byte position ≠ visual column because escape sequences are invisible. Three solutions identified: (a) don't overlay (full-screen replace), (b) render everything into a single CellBuffer, (c) use `muesli/ansi` for ANSI-aware string cutting. Recommended (b).
+- **Effort estimation**: Hard to estimate accurately without implementation. Used line-count comparison with Textual version as proxy. The 2× multiplier (~1500 vs ~700) accounts for building infrastructure that Textual provides.
+
+### What warrants a second pair of eyes
+- The effort estimate (§10) is based on pseudocode complexity, not actual Go implementation. Real effort could be higher if Lipgloss edge cases arise (ANSI width miscalculation, etc.)
+- The Goja recommendation for eval — binary size impact (~5MB) and whether a simpler expression parser would suffice
+
+### What should be done in the future
+- Evaluate Lipgloss v2 Canvas/Layer compositing as an alternative to the CellBuffer approach (done in Step 3)
+
+### Code review instructions
+- **Document**: `design-doc/01-bubbletea-port-analysis.md`
+- **Key sections**: §2 (CellBuffer), §5 (Mouse), §6 (Modal/ANSI splicing), §10 (Effort)
+- **Validate**: Read sections 1-6 alongside `grail.py` — each section maps to a specific part of the Python code
+
+---
+
+## Step 3: Lipgloss v2 Canvas/Layer Architecture (Revised Blueprint)
+
+The user provided detailed documentation about Lipgloss v2.0.0-beta.2's new compositing system (Canvas + Layer) and asked how it changes the port analysis. This was a major revision: the Canvas/Layer model eliminates the three hardest problems from Step 2 — CellBuffer for nodes (Lipgloss styled boxes as Layers), modal overlays (high-Z Layer), and hit testing (Canvas.Hit + Layer.ID).
+
+First an addendum was added to doc 01, then a complete standalone architecture document (doc 02) was written. Doc 02 is a full implementation blueprint with pseudocode for every subsystem, organized around the Layer compositing model.
+
+### Prompt Context
+
+**User prompt (verbatim):** "how do lipgloss v2 layers help you?" (followed by extensive Lipgloss v2 beta.2 documentation)
+
+**Assistant interpretation:** Analyze how the new Canvas/Layer compositing API changes the Bubbletea port architecture.
+
+**Inferred user intent:** Determine whether Lipgloss v2 simplifies the port enough to change the approach.
+
+**Commit (code):** a0b502d — "Addendum: Lipgloss v2 Canvas/Layer analysis — eliminates 3 hardest problems"
+**Commit (code):** c29b5c0 — "Add Lipgloss v2 Canvas/Layer architecture doc — complete Go port blueprint"
+
+### What I did
+- Added §14-§22 addendum to doc 01 analyzing Canvas/Layer impact
+- Wrote complete `02-bubbletea-v2-canvas-architecture.md` (~1700 lines):
+  - Full layer map (Z=0 chrome, Z=2 nodes, Z=3 labels, Z=100 modal)
+  - Node rendering as Lipgloss styled boxes → Layers with IDs
+  - Simplified MiniBuffer (edges/grid only, 4 styles instead of 15)
+  - Hit testing via Canvas.Hit() replacing manual coordinate math
+  - Clickable toolbar buttons via nested child layers
+  - Variables table using Lipgloss v2 table API with BaseStyle
+  - Background-aware theming via HasDarkBackground + LightDark
+  - Complete View() pipeline: build layers → NewCanvas → Render
+- Uploaded both docs to reMarkable as bundled PDF
+
+### Why
+- Lipgloss v2 Canvas/Layer is architecturally closer to the React/SVG original (positioned layers with z-index) than either the Textual version or the CellBuffer approach
+- It eliminates ~400 lines of the hardest code (CellBuffer for nodes, ANSI splicing, manual hit testing)
+- The resulting architecture is cleaner and more maintainable
+
+### What worked
+- The layer model maps 1:1 to how the React original works: `<div style={{position:'absolute', zIndex:2}}>` ↔ `NewLayer(content).X(x).Y(y).Z(2).ID("node-7")`
+- Canvas.Hit(x, y) makes hit testing consistent with rendering by construction — desync is impossible
+- Modal overlay is trivial: one line (`Z(100)`) instead of §6.3's three-page analysis
+
+### What didn't work
+- **Tag-in-border problem**: Lipgloss's `Border()` doesn't support injecting text like `┌[P]──────┐` into the top border. Identified three solutions: (a) tag as first content line (simplest), (b) custom top border string (15 lines), (c) post-process ANSI string (fragile). Recommended (a).
+
+### What I learned
+- Lipgloss v2 compositing requires Bubble Tea v2 — this is a hard constraint from the Charm team, not optional
+- Spaces within a Layer are opaque (they occlude lower layers) — this is correct for our use case (nodes should hide edges underneath)
+- Edges must stay in a shared background buffer because they're sparse diagonal lines that can't be rectangular Layers without occluding each other
+
+### What was tricky to build
+- **Retained canvas for hit testing**: `m.canvas` must be stored on the Model after `View()` so that `handleMouse()` can call `m.canvas.Hit()` on the same canvas that was rendered. This couples View and Update in a way that feels unusual for Elm architecture, but is necessary.
+- **Coordinate systems**: Layer X/Y are in canvas coordinates, mouse events are in terminal-absolute coordinates, nodes are in world coordinates. Three coordinate spaces with two transforms (cam offset, toolbar offset). Documented the mapping clearly to prevent bugs.
+- **MiniBuffer scope reduction**: Deciding what stays in the buffer (edges, grid, connect preview) vs what becomes a Layer (nodes, labels, modal, toolbar, panels) required careful analysis of which content is rectangular vs sparse.
+
+### What warrants a second pair of eyes
+- The assumption that Canvas.Hit() coordinates match Bubble Tea MouseMsg coordinates (both 0-indexed from terminal top-left). A small test program is recommended before building the full app.
+- Whether Lipgloss v2 beta.2 APIs will change before final release — we're building on pre-release software.
+- The `AddLayers` API for nested toolbar buttons — needs verification that child layer coordinates are parent-relative vs canvas-absolute.
+
+### What should be done in the future
+- Implement the Go port using doc 02 as blueprint
+- Write the small coordinate-system verification program (§20, Risk 6)
+- Track Lipgloss v2 / Bubble Tea v2 releases for API changes
+
+### Code review instructions
+- **Document**: `design-doc/02-bubbletea-v2-canvas-architecture.md`
+- **Key sections**: §4.3 (View pipeline), §5 (Node layers), §6 (MiniBuffer), §8 (Hit testing), §11 (Edit modal)
+- **Compare with**: doc 01 §2 (CellBuffer) and §6 (Modal) to see what was eliminated
+- **Validate**: Cross-reference pseudocode with `grail.py` — every function in the Python code has a corresponding pseudocode block in doc 02
+
+---
+
+## Step 4: Lipgloss StyleRanges Performance Investigation
+
+The user asked about the claim in doc 01 that "styling with Lipgloss is expensive per-cell" and what `StyleRanges` does. This prompted a hands-on investigation: we wrote two benchmark programs to measure the actual performance difference between per-cell `Style.Render()`, per-cell `StyleRanges`, merged-run `StyleRanges`, `Render`-per-run, and raw ANSI.
+
+### Prompt Context
+
+**User prompt (verbatim):** "you say styling with lipgloss is expensive and to use StyledRanges. Can you explain a bit more and tell me where that comes from and what styledranges does?"
+
+**Assistant interpretation:** Verify and explain the performance claim about per-cell Lipgloss styling, explain what StyleRanges actually is, and back it up with data.
+
+**Inferred user intent:** Understand whether the performance advice is real or hallucinated, and make an informed decision about the rendering approach.
+
+### What I did
+- Verified `StyleRanges` exists in both Lipgloss v1.1.0 and v2.0.0-beta.2 via `go doc`
+- Wrote `bench-lipgloss-percell-vs-ranges.go`: 4 methods on a 200×50 grid
+- Wrote `bench-lipgloss-realistic-buffer.go`: realistic edge buffer (90% bg, ~23 runs/row)
+- Saved scripts to `scripts/` in the ticket directory
+
+### Why
+- The doc 01 claim ("per-cell Lipgloss is expensive, use StyleRanges") needed verification
+- Understanding the actual cost is critical for choosing the MiniBuffer rendering strategy
+
+### What worked
+- Benchmarks produced clear, actionable numbers
+
+### What didn't work
+- The doc 01 claim was **partially wrong**: `StyleRanges` with per-cell ranges (200 ranges/row) is actually 3.5× *slower* than per-cell `Render()`, not faster. The win comes from **merging runs first**, then using either approach.
+
+### What I learned
+
+**Benchmark results (200×50 grid, 100 iterations):**
+
+| Method | µs/frame | Notes |
+|---|---|---|
+| Per-cell `Style.Render()` | 18,866 | One Render call per character |
+| Per-cell `StyleRanges()` | 65,101 | 200 ranges/row — much worse! |
+| Merged `StyleRanges()` (5 runs/row) | 1,002 | Run-length encoded first |
+| Raw ANSI (5 runs/row) | 24 | Manual escape sequences |
+
+**Output size for one 200-col row:**
+
+| Method | Bytes |
+|---|---|
+| Per-cell `Render()` | 3,800 |
+| Merged `StyleRanges()` | 290 |
+| Raw ANSI | 279 |
+
+**Realistic edge buffer (150×40, ~23 runs/row, 200 iterations):**
+
+| Method | µs/frame |
+|---|---|
+| Merged `StyleRanges()` | 7,374 |
+| `Render()`-per-run | 1,885 |
+
+**Key findings:**
+1. **Run-length encoding is what matters**, not the styling API you use. Per-cell anything is slow because of overhead per call.
+2. `Style.Render()` on merged runs is ~4× faster than `StyleRanges()` on merged runs (1,885 vs 7,374 µs in realistic scenario).
+3. Raw ANSI is ~80× faster than any Lipgloss approach, but loses Lipgloss's color profile downsampling.
+4. The doc 01 recommendation should have been "merge consecutive same-styled cells into runs, then render each run" — NOT "use StyleRanges instead of Render".
+
+**What `StyleRanges` actually does:** Given a plain string and a list of `Range{Start, End int; Style Style}`, it applies each Style to the corresponding substring while preserving existing ANSI escapes in the base string. It's designed for syntax-highlighting use cases where you have a pre-rendered string and want to colorize portions of it. It's slower than `Render`-per-run because it must do ANSI-aware string surgery on the base string.
+
+### What was tricky to build
+- Understanding *why* `StyleRanges` is slower: it must parse existing ANSI escapes in the base string to correctly splice in new styles. `Render()` on a plain substring has no existing escapes to parse — it just wraps with open/close sequences. This makes `Render`-per-run fundamentally cheaper.
+
+### What warrants a second pair of eyes
+- The doc 01 and doc 02 MiniBuffer rendering sections recommend `StyleRanges` — this should be updated to recommend `Render`-per-run instead.
+- At ~1.9ms/frame for a 150×40 buffer with Render-per-run, the MiniBuffer is fast enough (well under 16ms frame budget). But if the canvas grows significantly, raw ANSI (~24µs) would be the fallback.
+
+### What should be done in the future
+- Update doc 02 §6.2 to recommend `Render`-per-run instead of `StyleRanges`
+- Consider whether raw ANSI is worth the loss of color profile downsampling for the edge buffer (probably not — 1.9ms is fine)
+
+### Code review instructions
+- **Scripts**: `scripts/bench-lipgloss-percell-vs-ranges.go`, `scripts/bench-lipgloss-realistic-buffer.go`
+- **Run**: `cd scripts && go run bench-lipgloss-percell-vs-ranges.go` and `go run bench-lipgloss-realistic-buffer.go`
+- **Cross-reference**: doc 01 §2.3 and doc 02 §6.2 — both need correction
+
+### Technical details
+
+**`lipgloss.StyleRanges` API (exists in v1.1.0 and v2.0.0-beta.2):**
+```go
+func StyleRanges(s string, ranges ...Range) string
+type Range struct { Start, End int; Style Style }
+func NewRange(start, end int, style Style) Range
+```
+
+"StyleRanges allows to, given a string, style ranges of it differently. The function will take into account existing styles. Ranges should not overlap."
+
+**`lipgloss.Style.Render` API:**
+```go
+func (s Style) Render(strs ...string) string
+```
+
+"Render applies the defined style formatting to a given string."
+
+The performance difference comes from `StyleRanges` needing to parse/preserve existing ANSI in the base string, while `Render` on a plain substring just wraps it.
