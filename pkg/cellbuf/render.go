@@ -20,9 +20,14 @@ func (b *Buffer) Render(styles map[StyleKey]lipgloss.Style) string {
 	}
 
 	lines := make([]string, b.H)
+	// Reusable rune buffer — avoids allocation per run
+	chunk := make([]rune, b.W)
 
 	for y := 0; y < b.H; y++ {
 		var sb strings.Builder
+		// Pre-size: each cell is ~1 byte content + ~10 bytes ANSI overhead
+		// amortized across runs. 2× width is a reasonable estimate.
+		sb.Grow(b.W * 2)
 		row := b.Cells[y]
 
 		runStart := 0
@@ -38,15 +43,16 @@ func (b *Buffer) Render(styles map[StyleKey]lipgloss.Style) string {
 			}
 
 			if curStyle != runStyle {
-				// Flush the accumulated run
-				chunk := make([]rune, x-runStart)
-				for i := runStart; i < x; i++ {
-					chunk[i-runStart] = row[i].Ch
+				// Flush the accumulated run into the reusable chunk
+				n := x - runStart
+				for i := 0; i < n; i++ {
+					chunk[i] = row[runStart+i].Ch
 				}
-				if s, ok := styles[runStyle]; ok {
-					sb.WriteString(s.Render(string(chunk)))
+				s := string(chunk[:n])
+				if style, ok := styles[runStyle]; ok {
+					sb.WriteString(style.Render(s))
 				} else {
-					sb.WriteString(string(chunk))
+					sb.WriteString(s)
 				}
 				runStart = x
 				runStyle = curStyle
