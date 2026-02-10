@@ -1,7 +1,7 @@
 ---
 Title: Nodes on canvas — Lipgloss styled boxes as layers
 Ticket: GRAIL-007-NODES
-Status: active
+Status: complete
 Topics:
     - rendering
     - bubbletea
@@ -14,10 +14,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.51914414-05:00
+LastUpdated: 2026-02-10T17:11:36.469749615-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # Nodes on canvas — Lipgloss styled boxes as layers
 

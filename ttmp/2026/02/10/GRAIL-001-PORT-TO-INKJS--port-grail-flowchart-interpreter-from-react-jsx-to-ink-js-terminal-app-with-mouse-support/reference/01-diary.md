@@ -808,3 +808,49 @@ Continuing sequential implementation. GRAIL-006 is the last `pkg/` package.
 - **Files**: `pkg/tealayout/regions.go`, `pkg/tealayout/chrome.go`, `pkg/tealayout/regions_test.go`
 - **Run**: `make test` (60 tests across 4 packages)
 - **Key**: `Remaining` degenerate bounds check
+
+---
+
+## Step 13: Implement GRAIL-007 — Nodes on Canvas
+
+First visual milestone: the app shows 7 styled flowchart boxes on a dark background with camera panning. Created `internal/grailui/` package with Model/Update/View + data types + styles. The Compositor approach from Step 11 works perfectly for node positioning.
+
+### Prompt Context
+
+Continuing sequential build. User confirmed scaffold mouse tracking works, asked "how can I test [tealayout]?" — moved on since tealayout is pure math.
+
+**Commit:** c2af1b2
+
+### What I did
+- `internal/grailui/data.go`: FlowNodeData (implements Spatial), FlowEdgeData, NodeTypeInfo registry, MakeInitialGraph (7-node sum 1..5 demo)
+- `internal/grailui/styles.go`: Color palette (CRT green theme), `borderForType` (rounded/double/normal), `c()` helper for `lipgloss.Color`
+- `internal/grailui/layers.go`: `buildNodeLayers` — builds positioned Layers from graph nodes with border styles, type tags, centered labels, selection/execution color overrides, visibility culling
+- `internal/grailui/model.go`: Model struct with Graph, camera, tool, selection state
+- `internal/grailui/update.go`: Key handling (q quit, arrows pan, s/a/c tools), mouse tracking
+- `internal/grailui/view.go`: Layout (toolbar+canvas+footer), composes background + chrome + node layers via Compositor
+- Simplified `cmd/grail/main.go` to just create Model and run
+
+### What worked
+- All 7 nodes render with correct border types: `╭╮╰╯` terminal, `╔╗╚╝` decision, `┌┐└┘` process/io
+- Type tags render in top border: `[T]`, `[P]`, `[?]`, `[IO]`
+- Text labels centered within nodes
+- Camera panning works smoothly (3 cells per arrow key press)
+- Footer shows live mouse coords, camera position, selection, node count
+- Visibility culling skips off-screen nodes
+
+### What didn't work
+- **`lipgloss.Color` is a function in v2, not a type.** `lipgloss.Color("#00d4a0")` returns `color.Color`. Fixed by using `color.Color` as the variable type and a `c()` shorthand helper.
+- **Edge color variables declared but unused** — had to use `_ = c(...)` blanks to avoid compiler errors. Will be used in GRAIL-008.
+
+### What I learned
+- **Lipgloss v2 color API change**: `lipgloss.Color` went from being a type (v1: `type Color string`) to being a constructor function (v2: `func Color(s string) color.Color`). All color variables must be typed as `color.Color`.
+- **Compositor handles 10+ layers efficiently** — no visible lag with bg + toolbar + footer + 7 nodes + 7 tags = 17 layers.
+- **The `internal/` convention works well** — `grailui` is app-specific, `pkg/` is reusable.
+
+### What was tricky to build
+- Nothing — with the Compositor discovery from Step 11, everything wired up cleanly.
+
+### Code review instructions
+- **Files**: `internal/grailui/*.go`, `cmd/grail/main.go`
+- **Run**: `GOWORK=off go run ./cmd/grail/` — 7 nodes visible, arrow keys pan, q quits
+- **Key**: `buildNodeLayers` in `layers.go` — the camera→screen coordinate transform and visibility culling
