@@ -20,6 +20,8 @@ RelatedFiles:
       Note: Go module definition
     - Path: ttmp/2026/02/10/EXP-001-PTY-BUBBLETEA--embed-a-real-pty-into-a-bubble-tea-tui-pane/scripts/pty-bubbletea/main.go
       Note: Main Go source - PTY+vt10x+BubbleTea integration
+    - Path: ttmp/2026/02/10/EXP-001-PTY-BUBBLETEA--embed-a-real-pty-into-a-bubble-tea-tui-pane/scripts/test-dual-panes.sh
+      Note: 'Tmux test for dual-PTY + todo widget: focus switching'
     - Path: ttmp/2026/02/10/EXP-001-PTY-BUBBLETEA--embed-a-real-pty-into-a-bubble-tea-tui-pane/scripts/test-in-tmux.sh
       Note: Tmux test - launches vi
     - Path: ttmp/2026/02/10/EXP-001-PTY-BUBBLETEA--embed-a-real-pty-into-a-bubble-tea-tui-pane/scripts/test-insert-mode.sh
@@ -30,6 +32,7 @@ LastUpdated: 2026-02-10T10:49:39.997993025-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 
 

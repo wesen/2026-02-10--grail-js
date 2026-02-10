@@ -23,3 +23,8 @@ Added deep Bubbletea port analysis design doc with pseudocode for all subsystems
 
 Major addendum to Bubbletea port analysis: Lipgloss v2 Canvas/Layer compositing eliminates CellBuffer for nodes, solves modal overlay, provides built-in hit testing
 
+
+## 2026-02-10
+
+Added complete Lipgloss v2 Canvas/Layer architecture document (doc 02) — supersedes CellBuffer approach for rendering
+
