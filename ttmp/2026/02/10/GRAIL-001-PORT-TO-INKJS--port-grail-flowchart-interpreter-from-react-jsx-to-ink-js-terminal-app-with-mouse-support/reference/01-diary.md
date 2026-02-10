@@ -966,3 +966,5 @@ Instead: convert screen→world coordinates in `handleMouse`, then call `graphmo
 - **Files**: `internal/grailui/mouse.go`, `internal/grailui/update.go`, `internal/grailui/model.go`, `internal/grailui/view.go`
 - **Run**: `GOWORK=off go run ./cmd/grail/` — click nodes to select, drag to move, press 2 then click to add decision node, d to delete
 - **Key**: `handleLeftClick` in `mouse.go` — the tool-dispatch state machine
+
+**Post-commit fix (69cf6b5):** Connect preview layer was a full-canvas cellbuf at Z=5 with opaque background — covered all nodes. Moved dashed line drawing into `buildEdgeCanvasLayer` (Z=0) so it's behind nodes. Root cause: cellbuf always fills with a background style, so any full-size cellbuf Layer will be opaque.
