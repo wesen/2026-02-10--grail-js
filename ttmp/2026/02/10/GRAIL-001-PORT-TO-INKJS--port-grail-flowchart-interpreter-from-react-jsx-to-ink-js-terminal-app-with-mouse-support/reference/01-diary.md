@@ -921,3 +921,48 @@ Continuing sequential build. No issues.
 ### Code review instructions
 - **Files**: `internal/grailui/panel.go`, `internal/grailui/view.go`
 - **Run**: `GOWORK=off go run ./cmd/grail/` — full layout visible at 100+ cols wide
+
+---
+
+## Step 16: Implement GRAIL-010 — Mouse Interaction
+
+The app is now an editor. Click to select, drag to move, connect mode for edges, add mode for new nodes, delete key removes. Used `graphmodel.HitTest` with world coordinates instead of `Compositor.Hit` — avoids the View→Update data flow problem (View doesn't return Model in Bubbletea).
+
+### Prompt Context
+
+Continuing sequential build. Checkpoint B passed first.
+
+**Commits:** 261e0ff (Checkpoint B), 13bedb7 (full mouse handler)
+
+### What I did
+- `scripts/test-compositor-hit.go`: Checkpoint B validation — Compositor.Hit coords match exactly
+- `internal/grailui/mouse.go`: `handleMouse`, `handleLeftClick`, `autoEdgeLabel`, drag/connect/add state machines
+- Updated `update.go`: key handlers for d/delete, 1-5 node types, esc cancel, tool switching clears connect state
+- Updated `view.go`: connect preview layer, toolbar shows current tool/mode
+- `model.go`: added Dragging, DragNodeID/OffX/OffY, ConnectFromID, AddNodeType fields
+
+### Design decision: graphmodel.HitTest vs Compositor.Hit
+Originally planned to use `Compositor.Hit(screenX, screenY)` for click handling, which would work if we could pass the Compositor from View to the next Update call. But in Bubbletea, `View()` is a pure function that doesn't return the model. Storing the Compositor in the model via View is possible with pointer receivers but breaks the value-type flow.
+
+Instead: convert screen→world coordinates in `handleMouse`, then call `graphmodel.HitTest(worldPoint)`. This is simpler (no layer ID parsing), works without View→Update coupling, and is already tested (20 graphmodel tests). Checkpoint B validated that Compositor.Hit *would* work if needed.
+
+### What worked
+- Click-to-select with cyan highlight
+- Drag-to-move with offset tracking (click center of node, drag smoothly)
+- Tool switching: s/a/c keys, 1-5 for node types in add mode
+- d/delete removes selected node + all connected edges
+- Connect mode: toolbar shows "CONNECT from #N → click target"
+- Escape cancels everything, returns to select mode
+- Mouse events only processed inside canvas rect (not panel/toolbar)
+
+### What didn't work
+- Initially tried to store `LastComp *lipgloss.Compositor` in Model and set it in View — doesn't persist because View takes a value receiver. Switched to graphmodel.HitTest.
+
+### What I learned
+- **Screen→world coordinate transform is `worldX = mouseX - canvasRect.Min.X + camX`.** This is the same transform used in the Python version, just more explicit.
+- **`graphmodel.HitTest` at world coordinates is simpler and more testable** than Compositor.Hit at screen coordinates. No layer ID parsing needed.
+
+### Code review instructions
+- **Files**: `internal/grailui/mouse.go`, `internal/grailui/update.go`, `internal/grailui/model.go`, `internal/grailui/view.go`
+- **Run**: `GOWORK=off go run ./cmd/grail/` — click nodes to select, drag to move, press 2 then click to add decision node, d to delete
+- **Key**: `handleLeftClick` in `mouse.go` — the tool-dispatch state machine

@@ -1,7 +1,7 @@
 ---
 Title: Mouse interaction — Select, drag, connect, add, delete
 Ticket: GRAIL-010-MOUSE
-Status: active
+Status: complete
 Topics:
     - mouse
     - bubbletea
@@ -13,10 +13,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.736061904-05:00
+LastUpdated: 2026-02-10T17:27:52.972639976-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # Mouse interaction — Select, drag, connect, add, delete
 
