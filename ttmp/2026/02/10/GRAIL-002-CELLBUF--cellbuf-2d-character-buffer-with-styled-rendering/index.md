@@ -1,7 +1,7 @@
 ---
 Title: cellbuf — 2D character buffer with styled rendering
 Ticket: GRAIL-002-CELLBUF
-Status: active
+Status: complete
 Topics:
     - cellbuf
     - rendering
@@ -13,10 +13,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:12.936386145-05:00
+LastUpdated: 2026-02-10T16:20:04.967123753-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # cellbuf — 2D character buffer with styled rendering
 

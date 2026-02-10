@@ -1,14 +1,16 @@
 // cellbuf-demo renders a sample buffer to the terminal to visually verify
-// that cellbuf + lipgloss styling works correctly.
+// that cellbuf + drawutil + lipgloss styling works correctly.
 //
 // Run: GOWORK=off go run ./cmd/cellbuf-demo/
 package main
 
 import (
 	"fmt"
+	"image"
 
 	"charm.land/lipgloss/v2"
 	"github.com/wesen/grail/pkg/cellbuf"
+	"github.com/wesen/grail/pkg/drawutil"
 )
 
 // Style keys
@@ -35,69 +37,49 @@ func main() {
 
 	buf := cellbuf.New(60, 25, BG)
 
-	// Grid dots
-	for y := 0; y < 25; y++ {
-		for x := 0; x < 60; x++ {
-			if x%4 == 0 && y%2 == 0 {
-				buf.Set(x, y, '·', Grid)
-			}
-		}
-	}
+	// Grid dots via drawutil
+	drawutil.DrawGrid(buf, 0, 0, 4, 2, Grid)
 
-	// Draw a node box: "START" at (5, 2)
+	// Draw node boxes
 	drawBox(buf, 5, 2, 12, 3, NodeBox, '╭', '╮', '╰', '╯', '─', '│')
 	buf.SetString(7, 3, " START  ", NodeText)
 
-	// Draw a node box: "x = x + 1" at (5, 10)
 	drawBox(buf, 3, 10, 16, 3, NodeBox, '┌', '┐', '└', '┘', '─', '│')
 	buf.SetString(5, 11, " x = x + 1  ", NodeText)
 
-	// Draw a node box: "x > 10?" at (35, 6)
 	drawBox(buf, 33, 6, 14, 3, NodeBox, '◇', '◇', '◇', '◇', '─', '│')
 	buf.SetString(35, 7, " x > 10 ?  ", NodeText)
 
-	// Draw a node box: "END" at (35, 18)
 	drawBox(buf, 35, 18, 10, 3, NodeBox, '╭', '╮', '╰', '╯', '─', '│')
 	buf.SetString(37, 19, "  END   ", NodeText)
 
-	// Vertical edge: START → decision
-	for y := 5; y <= 7; y++ {
-		buf.Set(10, y, '│', Edge)
-	}
-	buf.Set(10, 5, '▼', Edge)
-	// Horizontal edge to decision
-	for x := 11; x <= 33; x++ {
-		buf.Set(x, 7, '─', Edge)
-	}
+	// Edges using drawutil — EdgeExit computes exit points from node rects
+	startRect := image.Rect(5, 2, 17, 5)
+	decisionRect := image.Rect(33, 6, 47, 9)
+	processRect := image.Rect(3, 10, 19, 13)
+	endRect := image.Rect(35, 18, 45, 21)
 
-	// Vertical edge: decision → process (YES branch, going left then down)
-	buf.Set(33, 9, '│', EdgeHot)
-	for y := 9; y <= 10; y++ {
-		buf.Set(20, y, '│', EdgeHot)
-	}
-	for x := 20; x <= 33; x++ {
-		buf.Set(x, 9, '─', EdgeHot)
-	}
-	buf.SetString(24, 8, "YES", Label)
+	// START → decision (arrow line)
+	e1a := drawutil.EdgeExit(startRect, decisionRect.Min)
+	e1b := drawutil.EdgeExit(decisionRect, startRect.Min)
+	drawutil.DrawArrowLine(buf, e1a.X, e1a.Y, e1b.X, e1b.Y, Edge, Edge)
 
-	// Vertical edge: decision → END (NO branch, going down)
-	for y := 9; y <= 18; y++ {
-		buf.Set(40, y, '│', Edge)
-	}
-	buf.Set(40, 18, '▼', Edge)
+	// decision → END (NO branch, down)
+	e2a := drawutil.EdgeExit(decisionRect, endRect.Min)
+	e2b := drawutil.EdgeExit(endRect, decisionRect.Min)
+	drawutil.DrawArrowLine(buf, e2a.X, e2a.Y, e2b.X, e2b.Y, Edge, Edge)
 	buf.SetString(42, 12, "NO", Label)
 
-	// Loop back: process → decision
-	for y := 6; y <= 10; y++ {
-		buf.Set(2, y, '│', EdgeHot)
-	}
-	for x := 2; x <= 3; x++ {
-		buf.Set(x, 10, '─', EdgeHot)
-	}
-	for x := 2; x <= 10; x++ {
-		buf.Set(x, 6, '─', EdgeHot)
-	}
-	buf.Set(10, 6, '▼', EdgeHot)
+	// decision → process (YES branch, dashed preview style)
+	e3a := drawutil.EdgeExit(decisionRect, processRect.Min)
+	e3b := drawutil.EdgeExit(processRect, decisionRect.Min)
+	drawutil.DrawDashedLine(buf, e3a.X, e3a.Y, e3b.X, e3b.Y, EdgeHot)
+	buf.SetString(24, 8, "YES", Label)
+
+	// process → START (loop back)
+	e4a := drawutil.EdgeExit(processRect, startRect.Min)
+	e4b := drawutil.EdgeExit(startRect, processRect.Min)
+	drawutil.DrawArrowLine(buf, e4a.X, e4a.Y, e4b.X, e4b.Y, EdgeHot, EdgeHot)
 
 	// Title
 	fmt.Println()

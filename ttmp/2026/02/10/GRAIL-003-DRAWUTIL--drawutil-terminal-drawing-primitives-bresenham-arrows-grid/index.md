@@ -1,7 +1,7 @@
 ---
 Title: drawutil — Terminal drawing primitives (Bresenham, arrows, grid)
 Ticket: GRAIL-003-DRAWUTIL
-Status: active
+Status: complete
 Topics:
     - rendering
     - go
@@ -12,10 +12,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-02-10T14:31:13.009924862-05:00
+LastUpdated: 2026-02-10T16:22:11.348315429-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # drawutil — Terminal drawing primitives (Bresenham, arrows, grid)
 
